@@ -1,11 +1,16 @@
 {
-	"name": "detain/vps-host-service",
-	"description": "Service providing virtualization management",
+	"name": "provirted/provirted",
+	"description": "Easy management of Virtualization technologies including KVM, Xen, OpenVZ, Virtuozzo, and LXC/LXD including unified commands, monitoring, template management, and many more features.",
 	"type": "project",
 	"keywords": [
-		"server",
-		"administration",
-		"vps"
+		"vps",
+		"kvm",
+		"virtuozzo",
+		"openvz",
+		"virtualization",
+		"xen",
+		"lxc",
+		"lxd"
 	],
 	"license": "LGPL-2.1-or-later",
 	"authors": [

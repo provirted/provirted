@@ -2,7 +2,7 @@
 
 ## About
 
-Easy management of Virtualization technologies including KVM, OpenVZ and Virtuozzo.
+Easy management of Virtualization technologies including KVM, Xen, OpenVZ, Virtuozzo, and LXC/LXD including unified commands, monitoring, template management, and many more features.
 
 ## TODO
 
