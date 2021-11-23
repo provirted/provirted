@@ -13,7 +13,7 @@ completion:
 
 phar:
 	rm -f provirted.phar
-	php provirted.php archive --composer=composer.json --app-bootstrap --executable --no-compress provirted.phar
+	php provirted.php archive --composer=composer.json --app-bootstrap --executable --compress=gz provirted.phar
 	chmod +x provirted.phar
 
 install:
@@ -23,3 +23,12 @@ install:
 internals:
 	rm -rf app/Command/InternalsCommand
 	php provirted.php generate-internals
+
+publish: nodev phar completion
+	git pull --all && git commit -a && git push --all && git pull --all
+
+copy:
+	cp -fv provirted.phar ../vps_host_server/cli/provirted.phar
+	cd ../vps_host_server && git pull --all && git commit -m 'Updating provirted.phar' cli/provirted.phar && git push --all && git pull --all
+
+pubcopy: publish copy
