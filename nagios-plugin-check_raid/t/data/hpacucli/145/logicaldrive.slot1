@@ -1,3 +1,0 @@
-#[root@tmp] # /sbin/hpssacli controller slot=1 logicaldrive all show
-
-Error: The specified device does not have any logical drives.
