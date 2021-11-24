@@ -1,6 +1,10 @@
 all: nodev phar completion
 
-update:
+pubcopy: publish copy
+
+publish: nodev phar completion commit
+
+dev:
 	composer update --with-all-dependencies -v -o --ansi --dev
 
 nodev:
@@ -24,11 +28,17 @@ internals:
 	rm -rf app/Command/InternalsCommand
 	php provirted.php generate-internals
 
-publish: nodev phar completion
-	git pull --all && git commit -a && git push --all && git pull --all
+commit:
+	git pull --all && \
+		git commit -a && \
+		git push --all && \
+		git pull --all
 
 copy:
-	cp -fv provirted.phar ../vps_host_server/cli/provirted.phar
-	cd ../vps_host_server && git pull --all && git commit -m 'Updating provirted.phar' cli/provirted.phar && git push --all && git pull --all
-
-pubcopy: publish copy
+	cp -fv provirted.phar ../vps_host_server/provirted.phar && \
+		cd ../vps_host_server && \
+		git pull --all && \
+		git commit -m 'Updating provirted.phar' provirted.phar && \
+		git push --all && \
+		git pull --all && \
+		cd ../provirted
