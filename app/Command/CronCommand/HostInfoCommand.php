@@ -76,7 +76,7 @@ class HostInfoCommand extends Command {
 				$mounts[] = $dev.':'.$total.':'.$used.':'.$free.':'.$matchDir;
 			}
 		}
-		preg_match_all('/^\s*([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):(.*)$/m', trim(`pvdisplay -c > /tmp/pvdisplay.txt;grep :vz: /tmp/pvdisplay.txt; rm -f /tmp/pvdisplay.txt`), $matches);
+		preg_match_all('/^\s*([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):(.*)$/m', trim(`pvdisplay -c|grep :vz:`), $matches);
 		foreach ($matches[1] as $idx => $value) {
 			$dev = $value;
 			$matchDir = $matches[2][$idx];
@@ -116,9 +116,7 @@ class HostInfoCommand extends Command {
 			$server['iowait'] = trim(`iostat -c  |grep -v "^$" | tail -n 1 | awk '{ print $4 }';`);
 		}
 		$cmd = 'if [ "$(which vzctl 2>/dev/null)" = "" ]; then
-		pvdisplay -c > /tmp/pvdisplay.txt;
-		iodev="/$(grep :vz: /tmp/pvdisplay.txt|cut -d/ -f2- |cut -d: -f1|head -n 1)";
-		rm -f /tmp/pvdisplay.txt;
+		iodev="/$(pvdisplay -c |grep :vz:|cut -d/ -f2- |cut -d: -f1|head -n 1)";
 		else
 		iodev=/vz;
 		fi;
@@ -164,7 +162,7 @@ class HostInfoCommand extends Command {
 				$usedg = ceil($usedb / 1073741824);
 				$out = $totalg.' '.$freeg;
 			} elseif (trim(`lvdisplay  |grep 'Allocated pool';`) == '') {
-				$parts = explode(':', trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/sbin:/usr/sbin"; pvdisplay -c > /tmp/pvdisplay.txt; grep :vz: /tmp/pvdisplay.txt; rm -f /tmp/pvdisplay.txt`));
+				$parts = explode(':', trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/sbin:/usr/sbin"; pvdisplay -c|grep :vz:`));
 				$pesize = $parts[7];
 				$totalpe = $parts[8];
 				$freepe = $parts[9];
