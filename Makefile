@@ -22,7 +22,7 @@ phar:
 
 install:
 	cp provirted_completion /etc/bash_completion.d/provirted
-	ln -fs /root/cpaneldirect/cli/provirted.phar /usr/local/bin/provirted
+	ln -fs /root/cpaneldirect/provirted.phar /usr/local/bin/provirted
 
 internals:
 	rm -rf app/Command/InternalsCommand
