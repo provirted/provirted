@@ -13,7 +13,7 @@ class Dhcpd
     * @return bool
     */
 	public static function isRunning() {
-		Vps::getLogger()->write(self::runCommand('pidof dhcpd >/dev/null', $return));
+		Vps::getLogger()->write(Vps::runCommand('pidof dhcpd >/dev/null', $return));
 		return $return == 0;
 	}
 
