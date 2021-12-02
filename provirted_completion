@@ -5529,7 +5529,7 @@ subcommand_alias=()
 subcommand_signs=()
 options=(["-v"]="1" ["--verbose"]="1" ["-t"]="1" ["--virt"]="1" )
 options_require_value=(["-t"]="1" ["--virt"]="1" )
-local argument_min_length=1
+local argument_min_length=2
 
     # Get the command name chain of the current input, e.g.
     # 
@@ -5602,6 +5602,8 @@ local argument_min_length=1
 if [[ $argument_min_length > 0 ]] ; then
   case $argument_index in
       0)
+      ;;
+      1)
       ;;
   esac
   fi

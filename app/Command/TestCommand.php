@@ -23,9 +23,10 @@ class TestCommand extends Command {
     /** @param \CLIFramework\ArgInfoList $args */
 	public function arguments($args) {
 		$args->add('vzid')->desc('VPS id/name to use')->isa('string');
+		$args->add('password')->desc('Password')->isa('string');
 	}
 
-	public function execute($vzid) {
+	public function execute($vzid, $password = '') {
 		$this->getLogger()->writeln('Running Tests on '.$vzid);
 		$this->getLogger()->newline();
 		//$logger = new ActionLogger(fopen('php://stderr','w'), new Formatter);
@@ -73,8 +74,12 @@ class TestCommand extends Command {
 					$this->getLogger()->error("The VPS does not appear to have the right mac in DHCP ({$data['mac']} != {$mac})");
 					return 1;
 				}
+				$ip = $data['ip'];
 			}
 		}
+		/*grep "DHCPACK on" /var/log/syslog
+		Dec  2 10:26:08 builder dhcpd[1597]: DHCPACK on 64.20.46.222 to 00:16:3e:21:93:4e via br0 */
+
 		$logAction->done();
 		$logAction = $logger->newAction('XinetD');
 		$logAction->setStatus('configured');
@@ -87,6 +92,10 @@ class TestCommand extends Command {
 		$logAction = $logger->newAction('Networking');
 		$logAction->setStatus('request');
 		$logAction->setStatus('pinging');
+		if (trim(Vps::runCommand('ping -c 1 '.$ip.' -q -n >/dev/null && echo yes')) != 'yes') {
+			$this->getLogger()->error("Did not respond to ping.");
+			return 1;
+		}
 		$logAction->done();
 		$logAction = $logger->newAction('SSH');
 		$logAction->setStatus('connect');
