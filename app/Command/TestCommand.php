@@ -59,6 +59,22 @@ class TestCommand extends Command {
 			$this->getLogger()->error("Dhcpd does not appear to be running.");
 			return 1;
 		}
+		if (!array_key_exists($vzid, $hosts)) {
+			$this->getLogger()->error("Dhcpd does not appear to have {$vzid} among the configured hosts (".implode(', ', array_keys($hosts)).")");
+			return 1;
+		}
+		foreach ($hosts as $name => $data) {
+			if ($name == $vzid) {
+				if (!in_array($data['ip'], $ips)) {
+					$this->getLogger()->error("The VPS does not appear to have the right ip in DHCP ({$data['ip']} not in ".implode(', ', $ips).")");
+					return 1;
+				}
+				if ($data['mac'] != $mac) {
+					$this->getLogger()->error("The VPS does not appear to have the right mac in DHCP ({$data['mac']} != {$mac})");
+					return 1;
+				}
+			}
+		}
 		$logAction->done();
 		$logAction = $logger->newAction('XinetD');
 		$logAction->setStatus('configured');
