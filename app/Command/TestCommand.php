@@ -41,7 +41,7 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('success');
-		$logAction->done();
+		//$logAction->done();
 
 		$logAction = $logger->newAction('VPS Exists');
 		if (!Vps::vpsExists($vzid)) {
@@ -50,7 +50,7 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('success');
-		$logAction->done();
+		//$logAction->done();
 
 		$logAction = $logger->newAction('VPS Running');
 		if (!Vps::isVpsRunning($vzid)) {
@@ -59,7 +59,7 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('success');
-		$logAction->done();
+		//$logAction->done();
 
 		$logAction = $logger->newAction('DHCP Host');
 		$hosts = Dhcpd::getHosts();
@@ -69,7 +69,7 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('success');
-		$logAction->done();
+		//$logAction->done();
 
 		$logAction = $logger->newAction('DHCP Mac & IP');
 		$mac = Vps::getVpsMac($vzid);
@@ -90,7 +90,7 @@ class TestCommand extends Command {
 			}
 		}
 		$logAction->setStatus('success');
-		$logAction->done();
+		//$logAction->done();
 
 		$logAction = $logger->newAction('DHCP Running');
 		if (!Dhcpd::isRunning()) {
@@ -99,7 +99,7 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('success');
-		$logAction->done();
+		//$logAction->done();
 
 		/*grep "DHCPACK on" /var/log/syslog
 		Dec  2 10:26:08 builder dhcpd[1597]: DHCPACK on 64.20.46.222 to 00:16:3e:21:93:4e via br0 */
@@ -112,7 +112,7 @@ class TestCommand extends Command {
 			$this->getLogger()->error("XinetD does not appear to be running.");
 			return 1;
 		}
-		$logAction->done();
+		//$logAction->done();
 
 		$logAction = $logger->newAction('Networking');
 		$logAction->setStatus('request');
@@ -122,7 +122,7 @@ class TestCommand extends Command {
 			$this->getLogger()->error("Did not respond to ping.");
 			return 1;
 		}
-		$logAction->done();
+		//$logAction->done();
 
 		$logAction = $logger->newAction('SSH');
 		$logAction->setStatus('connecting');
@@ -140,7 +140,7 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('logged in');
-	    $logAction->done();
+	    //$logAction->done();
 
 		$cmd = 'hostname';
 		$stream = ssh2_exec($con, $cmd);
@@ -154,6 +154,6 @@ class TestCommand extends Command {
 
 
 		$logAction->setStatus('authentication');
-	    $logAction->done();
+	    //$logAction->done();
 	}
 }
