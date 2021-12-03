@@ -6,23 +6,28 @@ Easy management of Virtualization technologies including KVM, Xen, OpenVZ, Virtu
 
 ## TODO
 
-* Add template exists checks to the create code
-* Check your passwords beginning with hyphens interfere with the option parsing and that if a double dash will resolve the issue
 * store vzid only in the vzid field not hostname for kvm
   * it looks like we can grab information about the vm by using virt-inspector --no-applications -d <vzid> to get a xml formatted output of basic os info including hostnmae
+* Add template exists checks to the create code
+* Check your passwords beginning with hyphens interfere with the option parsing and that if a double dash will resolve the issue
 * fix **reset-password** command adding in detection of windows and skipping if not
 * possibly utilize virt-resize in **update** call instead of qemu-img resize
 * add bash/zsh completion suggestions for ip fields (except client ip) having it show the ips on the host server excluding ones in use
 * add escapeshellarg() calls around any vars being passed through a exec type call
 * fix the restore script to work with kvmv2 os.qcow2 files
-* split off into its own github org/repo [provirted/provirted](https://github.com/provirted/provirted.github.io)
-  * create public website on github [https://github.com/provirted/provirted.github.io](provirted/provirted.github.io)
-  * add wiki entries
+* create public website on github [https://github.com/provirted/provirted.github.io](provirted/provirted.github.io)
+* add wiki entries
 * add lxc support  [https://linuxcontainers.org/lxd/docs/master/](LXD Docs)
 * add **self-update** command for downloading the latest phar and replacing it
 * add **install** command - Installs PreRequisites, Configures Software for our setup
 * add **config** command - Management of the various settings
-* add server option to **test** command to perform various self diagnostics to check on the health and prepairedness of the system
+* work on **test** command to test a vPs or the host
+  * add server option to **test** command to perform various self diagnostics to check on the health and prepairedness of the system
+  * add option to tweak checks for template testing or client vps testing
+  * add ssh ping host from vps
+  * add ssh ping world from vps
+  * add gpt 2tb+ test
+  * add optional syslog/messages checking dhcp server for DHCPACK from vps
 * remove reliance on local scripts
 
 buildebtablesrules

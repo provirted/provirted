@@ -142,7 +142,6 @@ class TestCommand extends Command {
 	    $logAction->done();
 
 		$logAction = $logger->newAction('SSH Authentication');
-		$logAction->setStatus('running');
 		$cmd = 'hostname';
 		$stream = ssh2_exec($con, $cmd);
 		stream_set_blocking($stream, true);
