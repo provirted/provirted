@@ -147,7 +147,7 @@ class TestCommand extends Command {
 		stream_set_blocking($stream, true);
 		$response = trim(stream_get_contents($stream));
 		fclose($stream);
-		$this->getLogger()->writeln('got hostname "'.$resonse.'"');
+		$this->getLogger()->writeln('got hostname "'.$response.'"');
 		if ($con) {
 			ssh2_disconnect($con);
 		}
