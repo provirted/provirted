@@ -31,7 +31,7 @@ class TestCommand extends Command {
 		$this->getLogger()->newline();
 		//$logger = new ActionLogger(fopen('php://stderr','w'), new Formatter);
 		$logger = new ActionLogger(fopen('php://stdout','w'), new Formatter);
-		$logAction = $logger->newAction('Virtualization');
+		$logAction = $logger->newAction('Virtualization Installed');
 		$logAction->setStatus('checking');
 		Vps::init($this->getOptions(), ['vzid' => $vzid]);
 		if (!Vps::isVirtualHost()) {
@@ -41,7 +41,7 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('success');
-		//$logAction->done();
+		$logAction->done();
 
 		$logAction = $logger->newAction('VPS Exists');
 		if (!Vps::vpsExists($vzid)) {
@@ -50,7 +50,7 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('success');
-		//$logAction->done();
+		$logAction->done();
 
 		$logAction = $logger->newAction('VPS Running');
 		if (!Vps::isVpsRunning($vzid)) {
@@ -59,9 +59,9 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('success');
-		//$logAction->done();
+		$logAction->done();
 
-		$logAction = $logger->newAction('DHCP Host');
+		$logAction = $logger->newAction('DHCP Host Matches');
 		$hosts = Dhcpd::getHosts();
 		if (!array_key_exists($vzid, $hosts)) {
 			$logAction->setStatus('error');
@@ -69,9 +69,9 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('success');
-		//$logAction->done();
+		$logAction->done();
 
-		$logAction = $logger->newAction('DHCP Mac & IP');
+		$logAction = $logger->newAction('DHCP Mac & IP Adddress Matches');
 		$mac = Vps::getVpsMac($vzid);
 		$ips = Vps::getVpsIps($vzid);
 		foreach ($hosts as $name => $data) {
@@ -90,7 +90,7 @@ class TestCommand extends Command {
 			}
 		}
 		$logAction->setStatus('success');
-		//$logAction->done();
+		$logAction->done();
 
 		$logAction = $logger->newAction('DHCP Running');
 		if (!Dhcpd::isRunning()) {
@@ -99,22 +99,20 @@ class TestCommand extends Command {
 			return 1;
 		}
 		$logAction->setStatus('success');
-		//$logAction->done();
+		$logAction->done();
 
 		/*grep "DHCPACK on" /var/log/syslog
 		Dec  2 10:26:08 builder dhcpd[1597]: DHCPACK on 64.20.46.222 to 00:16:3e:21:93:4e via br0 */
 
-		$logAction = $logger->newAction('XinetD');
-		$logAction->setStatus('configured');
-		$logAction->setStatus('running');
+		$logAction = $logger->newAction('XinetD Running');
 		if (!Xinetd::isRunning()) {
 			$logAction->setStatus('error');
 			$this->getLogger()->error("XinetD does not appear to be running.");
 			return 1;
 		}
-		//$logAction->done();
+		$logAction->done();
 
-		$logAction = $logger->newAction('Networking');
+		$logAction = $logger->newAction('Host Pings VPS');
 		$logAction->setStatus('request');
 		$logAction->setStatus('pinging');
 		if (trim(Vps::runCommand('ping -c 1 '.$ip.' -q -n >/dev/null && echo yes')) != 'yes') {
@@ -122,26 +120,29 @@ class TestCommand extends Command {
 			$this->getLogger()->error("Did not respond to ping.");
 			return 1;
 		}
-		//$logAction->done();
+		$logAction->done();
 
-		$logAction = $logger->newAction('SSH');
+		$logAction = $logger->newAction('SSH Connection');
 		$logAction->setStatus('connecting');
 		$con = ssh2_connect($ip, 22);
-		if ($con) {
-			$logAction->setStatus('authenticating');
-			if (!ssh2_auth_password($con, 'root', $password)) {
-				$logAction->setStatus('error');
-				$this->getLogger()->error('SSH Password Authentication failed using "'.$password.'": '.var_export($con,true));
-				return 1;
-			}
-		} else {
+		if (!$con) {
 			$logAction->setStatus('error');
 			$this->getLogger()->error('SSH Connection failed to "'.$ip.'": '.var_export($con,true));
 			return 1;
 		}
-		$logAction->setStatus('logged in');
-	    //$logAction->done();
+		$logAction->done();
 
+		$logAction = $logger->newAction('SSH Authentication');
+		$logAction->setStatus('authenticating');
+		if (!@ssh2_auth_password($con, 'root', $password)) {
+			$logAction->setStatus('error');
+			$this->getLogger()->error('SSH Password Authentication failed using "'.$password.'": '.var_export($con,true));
+			return 1;
+		}
+	    $logAction->done();
+
+		$logAction = $logger->newAction('SSH Authentication');
+		$logAction->setStatus('running');
 		$cmd = 'hostname';
 		$stream = ssh2_exec($con, $cmd);
 		stream_set_blocking($stream, true);
@@ -151,9 +152,6 @@ class TestCommand extends Command {
 		if ($con) {
 			ssh2_disconnect($con);
 		}
-
-
-		$logAction->setStatus('authentication');
-	    //$logAction->done();
+	    $logAction->done();
 	}
 }
