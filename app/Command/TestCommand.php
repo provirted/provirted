@@ -31,74 +31,128 @@ class TestCommand extends Command {
 		$this->getLogger()->newline();
 		//$logger = new ActionLogger(fopen('php://stderr','w'), new Formatter);
 		$logger = new ActionLogger(fopen('php://stdout','w'), new Formatter);
-		$logAction = $logger->newAction('VPS');
-		$logAction->setStatus('setup');
+		$logAction = $logger->newAction('Virtualization');
+		$logAction->setStatus('checking');
 		Vps::init($this->getOptions(), ['vzid' => $vzid]);
 		if (!Vps::isVirtualHost()) {
+			$logAction->setStatus('error');
 			$this->getLogger()->error("This machine does not appear to have any virtualization setup installed.");
 			$this->getLogger()->error("Check the help to see how to prepare a virtualization environment.");
 			return 1;
 		}
-		$logAction->setStatus('exists');
+		$logAction->setStatus('success');
+		$logAction->done();
+
+		$logAction = $logger->newAction('VPS Exists');
 		if (!Vps::vpsExists($vzid)) {
+			$logAction->setStatus('error');
 			$this->getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
 			return 1;
 		}
-		$logAction->setStatus('running');
-		if (!Vps::isVpsRunning($vzid)) {
-			$this->getLogger()->error("The VPS '{$vzid}' you specified appears to be already running.");
-			return 1;
-		}
+		$logAction->setStatus('success');
 		$logAction->done();
-		$logAction = $logger->newAction('DHCP');
-		$logAction->setStatus('configured');
-		$hosts = Dhcpd::getHosts();
-		$mac = Vps::getVpsMac($vzid);
-		$ips = Vps::getVpsIps($vzid);
-		$logAction->setStatus('running');
-		if (!Dhcpd::isRunning()) {
-			$this->getLogger()->error("Dhcpd does not appear to be running.");
+
+		$logAction = $logger->newAction('VPS Running');
+		if (!Vps::isVpsRunning($vzid)) {
+			$logAction->setStatus('error');
+			$this->getLogger()->error("The VPS '{$vzid}' you specified appears to be stopped.");
 			return 1;
 		}
+		$logAction->setStatus('success');
+		$logAction->done();
+
+		$logAction = $logger->newAction('DHCP Host');
+		$hosts = Dhcpd::getHosts();
 		if (!array_key_exists($vzid, $hosts)) {
+			$logAction->setStatus('error');
 			$this->getLogger()->error("Dhcpd does not appear to have {$vzid} among the configured hosts (".implode(', ', array_keys($hosts)).")");
 			return 1;
 		}
+		$logAction->setStatus('success');
+		$logAction->done();
+
+		$logAction = $logger->newAction('DHCP Mac & IP');
+		$mac = Vps::getVpsMac($vzid);
+		$ips = Vps::getVpsIps($vzid);
 		foreach ($hosts as $name => $data) {
 			if ($name == $vzid) {
 				if (!in_array($data['ip'], $ips)) {
+					$logAction->setStatus('error');
 					$this->getLogger()->error("The VPS does not appear to have the right ip in DHCP ({$data['ip']} not in ".implode(', ', $ips).")");
 					return 1;
 				}
 				if ($data['mac'] != $mac) {
+					$logAction->setStatus('error');
 					$this->getLogger()->error("The VPS does not appear to have the right mac in DHCP ({$data['mac']} != {$mac})");
 					return 1;
 				}
 				$ip = $data['ip'];
 			}
 		}
+		$logAction->setStatus('success');
+		$logAction->done();
+
+		$logAction = $logger->newAction('DHCP Running');
+		if (!Dhcpd::isRunning()) {
+			$logAction->setStatus('error');
+			$this->getLogger()->error("Dhcpd does not appear to be running.");
+			return 1;
+		}
+		$logAction->setStatus('success');
+		$logAction->done();
+
 		/*grep "DHCPACK on" /var/log/syslog
 		Dec  2 10:26:08 builder dhcpd[1597]: DHCPACK on 64.20.46.222 to 00:16:3e:21:93:4e via br0 */
 
-		$logAction->done();
 		$logAction = $logger->newAction('XinetD');
 		$logAction->setStatus('configured');
 		$logAction->setStatus('running');
 		if (!Xinetd::isRunning()) {
+			$logAction->setStatus('error');
 			$this->getLogger()->error("XinetD does not appear to be running.");
 			return 1;
 		}
 		$logAction->done();
+
 		$logAction = $logger->newAction('Networking');
 		$logAction->setStatus('request');
 		$logAction->setStatus('pinging');
 		if (trim(Vps::runCommand('ping -c 1 '.$ip.' -q -n >/dev/null && echo yes')) != 'yes') {
+			$logAction->setStatus('error');
 			$this->getLogger()->error("Did not respond to ping.");
 			return 1;
 		}
 		$logAction->done();
+
 		$logAction = $logger->newAction('SSH');
-		$logAction->setStatus('connect');
+		$logAction->setStatus('connecting');
+		$con = ssh2_connect($ip, 22);
+		if ($con) {
+			$logAction->setStatus('authenticating');
+			if (!ssh2_auth_password($con, 'root', $password)) {
+				$logAction->setStatus('error');
+				$this->getLogger()->error('SSH Password Authentication failed using "'.$password.'": '.var_export($con,true));
+				return 1;
+			}
+		} else {
+			$logAction->setStatus('error');
+			$this->getLogger()->error('SSH Connection failed to "'.$ip.'": '.var_export($con,true));
+			return 1;
+		}
+		$logAction->setStatus('logged in');
+	    $logAction->done();
+
+		$cmd = 'hostname';
+		$stream = ssh2_exec($con, $cmd);
+		stream_set_blocking($stream, true);
+		$response = trim(stream_get_contents($stream));
+		fclose($stream);
+		$this->getLogger()->writeln('got hostname "'.$resonse.'"');
+		if ($con) {
+			ssh2_disconnect($con);
+		}
+
+
 		$logAction->setStatus('authentication');
 	    $logAction->done();
 	}
