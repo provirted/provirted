@@ -148,13 +148,12 @@ class Xinetd
 	/**
 	* cleans up and recreates all the xinetd vps entries
 	*
-	* @param bool $useAll true for QS hosts, default false
 	* @param bool $dryRun true to disable actual removing or writing of files, default false to actually perform the rebuild
 	* @param bool $force true to force rebuilding all entries, default false to reuse unchanged entries
 	*/
-	public static function rebuild($useAll = false, $dryRun = false, $force = false) {
+	public static function rebuild($dryRun = false, $force = false) {
 		Vps::getLogger()->write('Geting Host Info...');
-    	$host = Vps::getHostInfo($useAll);
+    	$host = Vps::getHostInfo();
     	Vps::getLogger()->write('done'.PHP_EOL);
     	if (!is_array($host) || !isset($host['vps'])) {
 			Vps::getLogger()->write('There appears to have been a problem with the host info, perhaps try again?'.PHP_EOL);

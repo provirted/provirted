@@ -79,11 +79,10 @@ class Dhcpd
 
     /**
     * regenerates the dhcpd.conf file
-    * @param bool $useAll defaults to false, true for qs
     * @param bool $display defaults to false, true to display file contents instead of write them
     */
-    public static function rebuildConf($useAll = false, $display = false) {
-    	$host = Vps::getHostInfo($useAll);
+    public static function rebuildConf($display = false) {
+    	$host = Vps::getHostInfo();
 		$file = 'authoritative;
 option domain-name "interserver.net";
 option domain-name-servers 1.1.1.1;
@@ -118,11 +117,10 @@ shared-network myvpn {
 
     /**
     * regenerates the dhcpd.vps hosts file
-    * @param bool $useAll defaults to false, true for qs
     * @param bool $display defaults to false, true to display file contents instead of write them
     */
-    public static function rebuildHosts($useAll = false, $display = false) {
-    	$host = Vps::getHostInfo($useAll);
+    public static function rebuildHosts($display = false) {
+    	$host = Vps::getHostInfo();
 		$lines = [];
 		foreach ($host['vps'] as $vps)
 			$lines[] = 'host '.$vps['vzid'].' { hardware ethernet '.$vps['mac'].'; fixed-address '.$vps['ip'].';}';

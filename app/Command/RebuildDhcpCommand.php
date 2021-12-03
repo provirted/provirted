@@ -19,7 +19,6 @@ class RebuildDhcpCommand extends Command {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
 		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-		$opts->add('a|all', 'QS host using all resources in a single vps');
 		$opts->add('o|output', 'Output the file contents instead of writing it');
 	}
 
@@ -29,7 +28,6 @@ class RebuildDhcpCommand extends Command {
 	}
 
 	public function execute($what = '') {
-		$useAll = false;
 		Vps::init($this->getOptions(), ['what' => $what]);
 		if (!Vps::isVirtualHost()) {
 			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
@@ -43,11 +41,10 @@ class RebuildDhcpCommand extends Command {
 		}
 		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
 		$opts = $this->getOptions();
-		$useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
 		$output = array_key_exists('output', $opts->keys) && $opts->keys['output']->value == 1;
 		if (in_array($what, ['conf', 'all']))
-			Dhcpd::rebuildConf($useAll, $output);
+			Dhcpd::rebuildConf($output);
 		if (in_array($what, ['vps', 'all']))
-			Dhcpd::rebuildHosts($useAll, $output);
+			Dhcpd::rebuildHosts($output);
 	}
 }

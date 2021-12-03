@@ -4437,7 +4437,7 @@ local comp_prefix=___provirted_phar
         subcommands=()
 subcommand_alias=()
 subcommand_signs=()
-options=(["-v"]="1" ["--verbose"]="1" ["-t"]="1" ["--virt"]="1" ["-a"]="1" ["--all"]="1" ["-o"]="1" ["--output"]="1" )
+options=(["-v"]="1" ["--verbose"]="1" ["-t"]="1" ["--virt"]="1" ["-o"]="1" ["--output"]="1" )
 options_require_value=(["-t"]="1" ["--virt"]="1" )
 local argument_min_length=1
 
@@ -5799,7 +5799,7 @@ local comp_prefix=___provirted_phar
         subcommands=()
 subcommand_alias=()
 subcommand_signs=()
-options=(["-v"]="1" ["--verbose"]="1" ["-t"]="1" ["--virt"]="1" ["-a"]="1" ["--all"]="1" ["-d"]="1" ["--dry"]="1" )
+options=(["-v"]="1" ["--verbose"]="1" ["-t"]="1" ["--virt"]="1" ["-f"]="1" ["--force"]="1" ["-d"]="1" ["--dry"]="1" )
 options_require_value=(["-t"]="1" ["--virt"]="1" )
 local argument_min_length=0
 

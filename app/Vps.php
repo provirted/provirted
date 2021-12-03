@@ -120,11 +120,10 @@ class Vps
 	/**
 	* returns an array containing information about the host server, vlans, and vps's
 	*
-	* @param bool $useAll true for quickservers
 	* @return array the host info
 	*/
-	public static function getHostInfo($useAll = false) {
-		$response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl($useAll).'?action=get_info')));
+	public static function getHostInfo() {
+		$response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=get_info')));
 		$host = json_decode($response, true);
 		if (!is_array($host) || !isset($host['vlans'])) {
 			self::getLogger()->error("invalid response getting host info:".$response);
@@ -216,8 +215,8 @@ class Vps
 			return OpenVz::vpsExists($vzid);
 	}
 
-	public static function getUrl($useAll = false) {
-		return 'https://mynew.interserver.net/'.($useAll == true ? 'qs' : 'vps').'_queue.php';
+	public static function getUrl() {
+		return 'https://mynew.interserver.net/queue.php';
 	}
 
     /**

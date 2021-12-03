@@ -79,7 +79,7 @@ HELP;
 			$orderId = str_replace(['qs', 'windows', 'linux', 'vps'], ['', '', '', ''], $vzid); // convert hostname to id
 		if ($mac == '' && is_numeric($orderId))
 			$mac = Vps::convertIdToMac($orderId, $useAll); // use id to generate mac address
-        $url = Vps::getUrl($useAll);
+        $url = Vps::getUrl();
         $kpartxOpts = preg_match('/sync/', Vps::runCommand("kpartx 2>&1")) ? '-s' : '';
 		$ram = $ram * 1024; // convert ram to kb
 		$hd = $hd * 1024; // convert hd to mb
