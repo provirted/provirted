@@ -70,7 +70,7 @@ class Kvm
 	}
 
 	public static function getVpsIps($vzid) {
-		$params = self::getVps($vzid)['domain']['devices']['interface']['filterref']['parameter'];
+		$params = self::getVps($vzid)['domain']['devices']['interface']['filterref']['parameter_attr'];
 		$ips = [];
 		foreach ($params as $idx => $data) {
 			if (array_key_exists('name', $data) && $data['name'] == 'IP') {
