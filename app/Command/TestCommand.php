@@ -141,16 +141,21 @@ class TestCommand extends Command {
 		}
 	    $logAction->done();
 
-		$logAction = $logger->newAction('SSH Authentication');
-		$cmd = 'hostname';
+		$logAction = $logger->newAction('VPS Pings Internet');
+		$cmd = 'ping -c 1 1.1.1.1 -q -n >/dev/null && echo yes';
 		$stream = ssh2_exec($con, $cmd);
 		stream_set_blocking($stream, true);
 		$response = trim(stream_get_contents($stream));
 		fclose($stream);
-		$this->getLogger()->writeln('got hostname "'.$response.'"');
+		if ($response != 'yes') {
+			$logAction->setStatus('error');
+			$this->getLogger()->error('Pinging 1.1.1.1 on VPS via SSH failed and returned: "'.$response.'"');
+			return 1;
+		}
+	    $logAction->done();
 		if ($con) {
 			ssh2_disconnect($con);
 		}
-	    $logAction->done();
+		$this->getLogger()->writeln($vzid.' passed all tests!');
 	}
 }
