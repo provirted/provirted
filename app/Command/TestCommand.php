@@ -121,9 +121,21 @@ class TestCommand extends Command {
 		}
 		$logAction->done();
 
+		$methods = [
+			'hostkey'=>'ssh-rsa',
+			'kex' => 'diffie-hellman-group-exchange-sha256',
+			'client_to_server' => [
+				'crypt' => 'aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc,blowfish-cbc',
+				'comp' => 'none'],
+			'server_to_client' => [
+				'crypt' => 'aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc,blowfish-cbc',
+				'comp' => 'none'
+		]];
+
+
 		$logAction = $logger->newAction('SSH Connection');
 		$logAction->setStatus('connecting');
-		$con = ssh2_connect($ip, 22);
+		$con = ssh2_connect($ip, 22, $methods);
 		if (!$con) {
 			$logAction->setStatus('error');
 			$this->getLogger()->error('SSH Connection failed to "'.$ip.'": '.var_export($con,true));

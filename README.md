@@ -24,9 +24,9 @@ Easy management of Virtualization technologies including KVM, Xen, OpenVZ, Virtu
 * work on **test** command to test a vPs or the host
   * add server option to **test** command to perform various self diagnostics to check on the health and prepairedness of the system
   * add option to tweak checks for template testing or client vps testing
-  * add ssh ping host from vps
-  * add ssh ping world from vps
   * add gpt 2tb+ test
+  * add package update test
+  * add code to try ssh even without a ping reply
   * add optional syslog/messages checking dhcp server for DHCPACK from vps
 * remove reliance on local scripts
 
