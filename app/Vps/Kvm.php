@@ -28,11 +28,12 @@ class Kvm
 	}
 
 	public static function getPoolType() {
-		$pool = self::getPool()['pool_attr']['type'];
+		//$pool = self::getPool()['pool_attr']['type'];
+		$pool = trim(Vps::runCommand('virsh pool-dumpxml vz 2>/dev/null|grep type|cut -d\\\' -f2'));
 		if ($pool == '') {
 			$base = Vps::$base;
 			Vps::getLogger()->write(Vps::runCommand("{$base}/create_libvirt_storage_pools.sh"));
-			$pool = self::getPool()['pool_attr']['type'];
+			$pool = trim(Vps::runCommand('virsh pool-dumpxml vz 2>/dev/null|grep type|cut -d\\\' -f2'));
 		}
 		if (preg_match('/vz/', Vps::runCommand("virsh pool-list --inactive"))) {
 			Vps::getLogger()->write(Vps::runCommand("virsh pool-start vz;"));
