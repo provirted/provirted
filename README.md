@@ -72,6 +72,7 @@ you can add -v to increase verbosity by 1 and see all the commands being run, or
 
 ## Developer Links
 
+* [KVMv2 Install](https://wiki.interserver.net/index.php/Kvmv2#latest_installer) KVMv2 Installer Code
 * [c9s/CLIFramework](https://github.com/c9s/CLIFramework) CLIFramework GitHub repo
 * [c9s/CLIFramework/wiki](https://github.com/c9s/CLIFramework/wiki) CLIFramework Wiki
 * [walkor/webman](https://github.com/walkor/webman) Webman GitHub repo
