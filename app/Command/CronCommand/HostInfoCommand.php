@@ -87,7 +87,7 @@ class HostInfoCommand extends Command {
 		}
 		$server['mounts'] = implode(',', $mounts);
 		if (trim(`which smartctl`) != '') {
-			$server['drive_type'] = trim(`if [ "\$(lshw -C disk | grep "description:" |grep NVMe)" != "" ]; then echo NVMe; else if [ "\$(smartctl -i /dev/sda|grep SSD)" != "" ]; then echo SSD; else echo SATA; fi; f`);
+			$server['drive_type'] = trim(`if [ "\$(lshw -C disk | grep "description:" |grep NVMe)" != "" ]; then echo NVMe; else if [ "\$(smartctl -i /dev/sda|grep SSD)" != "" ]; then echo SSD; else echo SATA; fi; fi`);
 		}
 		$cmd = '"${PERL:-perl}" -I"'.Vps::$base.'/nagios-plugin-check_raid/lib" "'.Vps::$base.'/nagios-plugin-check_raid/bin/check_raid.pl" "--check=WARNING" 2>/dev/null';
 		$server['raid_status'] = trim(`{$cmd}`);
