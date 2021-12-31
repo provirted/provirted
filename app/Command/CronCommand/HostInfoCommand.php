@@ -76,7 +76,7 @@ class HostInfoCommand extends Command {
 				$mounts[] = $dev.':'.$total.':'.$used.':'.$free.':'.$matchDir;
 			}
 		}
-		preg_match_all('/^\s*([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):(.*)$/m', trim(`pvdisplay -c|grep :vz:`), $matches);
+		preg_match_all('/^\s*([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):(.*)$/m', trim(`pvdisplay -c 2>/dev/null|grep :vz:`), $matches);
 		foreach ($matches[1] as $idx => $value) {
 			$dev = $value;
 			$matchDir = $matches[2][$idx];
@@ -116,7 +116,7 @@ class HostInfoCommand extends Command {
 			$server['iowait'] = trim(`iostat -c  |grep -v "^$" | tail -n 1 | awk '{ print $4 }';`);
 		}
 		$cmd = 'if [ "$(which vzctl 2>/dev/null)" = "" ]; then
-		iodev="/$(pvdisplay -c |grep :vz:|cut -d/ -f2- |cut -d: -f1|head -n 1)";
+		iodev="/$(pvdisplay -c 2>/dev/null|grep :vz:|cut -d/ -f2- |cut -d: -f1|head -n 1)";
 		else
 		iodev=/vz;
 		fi;
@@ -161,8 +161,8 @@ class HostInfoCommand extends Command {
 				$freeg = ceil($freeb / 1073741824);
 				$usedg = ceil($usedb / 1073741824);
 				$out = $totalg.' '.$freeg;
-			} elseif (trim(`lvdisplay  |grep 'Allocated pool';`) == '') {
-				$parts = explode(':', trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/sbin:/usr/sbin"; pvdisplay -c|grep :vz:`));
+			} elseif (trim(`lvdisplay 2>/dev/null|grep 'Allocated pool';`) == '') {
+				$parts = explode(':', trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/sbin:/usr/sbin"; pvdisplay -c 2>/dev/null|grep :vz:`));
 				$pesize = $parts[7];
 				$totalpe = $parts[8];
 				$freepe = $parts[9];
@@ -170,8 +170,8 @@ class HostInfoCommand extends Command {
 				$freeg = ceil($pesize * $freepe / 1048576);
 				$out = $totalg.' '.$freeg;
 			} else {
-				$TOTAL_GB = '$(lvdisplay --units g /dev/vz/thin |grep "LV Size" | sed s#"^.*LV Size"#""#g | sed s#"GiB"#""#g | sed s#" "#""#g | cut  -d\. -f1)';
-				$USED_PCT = '$(lvdisplay --units g /dev/vz/thin |grep "Allocated .*data" | sed s#"Allocated.*data"#""#g |sort -nr| head -n1 |sed s#"%"#""#g)';
+				$TOTAL_GB = '$(lvdisplay --units g /dev/vz/thin 2>/dev/null|grep "LV Size" | sed s#"^.*LV Size"#""#g | sed s#"GiB"#""#g | sed s#" "#""#g | cut  -d\. -f1)';
+				$USED_PCT = '$(lvdisplay --units g /dev/vz/thin 2>/dev/null|grep "Allocated .*data" | sed s#"Allocated.*data"#""#g |sort -nr| head -n1 |sed s#"%"#""#g)';
 				$GB_PER_PCT = $TOTAL_GB / 100;
 				$USED_GB = floor($USED_PCT * $GB_PER_PCT);
 				$MAX_PCT =  60;
