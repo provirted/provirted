@@ -370,7 +370,7 @@ class Kvm
 		} else {
 			Vps::getLogger()->info("Copy {$template}.qcow2 Image");
 			if ($hd == 'all') {
-				$hd = intval(trim(Vps::runCommand("zfs list vz -o available -H -p"))) / (1024 * 1024);
+				$hd = floor(intval(trim(Vps::runCommand("zfs list vz -o available -H -p"))) / (1024 * 1024));
 				if ($hd > 2000000)
 					$hd = 2000000;
 			}
