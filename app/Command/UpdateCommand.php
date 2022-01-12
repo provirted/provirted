@@ -39,6 +39,7 @@ class UpdateCommand extends Command
 
 	public function execute($vzid) {
 		Vps::init($this->getOptions(), ['vzid' => $vzid]);
+		$opts = $this->getOptions();
 		if (!Vps::isVirtualHost()) {
 			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
 			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
