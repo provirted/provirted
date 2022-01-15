@@ -6,6 +6,7 @@ Easy management of Virtualization technologies including KVM, Xen, OpenVZ, Virtu
 
 ## TODO
 
+* add jensuring memory limits 
 * store vzid only in the vzid field not hostname for kvm
   * it looks like we can grab information about the vm by using virt-inspector --no-applications -d <vzid> to get a xml formatted output of basic os info including hostnmae
 * Add template exists checks to the create code

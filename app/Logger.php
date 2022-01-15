@@ -21,7 +21,8 @@ class Logger extends \CLIFramework\Logger
     protected $indent = 0;
     protected $indentCharacter = '  ';
     protected $history = [];
-
+    protected $enabled = true;
+    
     public function __construct(ServiceContainer $container = null) {
     }
 
@@ -44,6 +45,32 @@ class Logger extends \CLIFramework\Logger
     */
     public function getHistory() {
 		return $this->history;
+    }
+    
+    /**
+    * clears the history data
+    * 
+    */
+    public function clearHistory() {
+        $this->history = [];
+    }
+    
+    /**
+    * enables the storing and updating of the hsitory log    * 
+    */
+    public function enableHistory() {
+        $this->enabled = true;
+    }
+    
+    /**
+    * disables the storing and updating of the hsitory log    * 
+    */
+    public function disableHistory() {
+        $this->enabled = false;
+    }
+    
+    public function isHistoryEnabled() {
+        return $this->enabled;
     }
 
     /**

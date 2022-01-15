@@ -21,6 +21,7 @@ class RebuildCommand extends Command {
 		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
 		$opts->add('f|force', 'Force rebuilding of all entries, otherwise leave entries that pass tests');
 		$opts->add('d|dry', 'perms a dry run, no files removed or written only messages saying they would have been');
+        $opts->add('n|no-log', 'Disables the history storing for the command');
 	}
 
     /** @param \CLIFramework\ArgInfoList $args */
@@ -38,6 +39,9 @@ class RebuildCommand extends Command {
 		$opts = $this->getOptions();
 		$force = array_key_exists('force', $opts->keys) && $opts->keys['force']->value == 1;
 		$dryRun = array_key_exists('dry', $opts->keys) && $opts->keys['dry']->value == 1;
+        $useHistory = !(array_key_exists('no-log', $opts->keys) && $opts->keys['no-log']->value == 1);
+        if (!$useHistory)
+            Vps::getLogger()->disableHistory();
 		Xinetd::lock();
 		Xinetd::rebuild($dryRun, $force);
 		Xinetd::unlock();
