@@ -32,6 +32,7 @@ class HostInfoCommand extends Command {
 		$opts = $this->getOptions();
         $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
 		$module = $useAll === true ? 'quickservers' : 'vps';
+        Vps::getLogger()->disableHistory();
 		$dir = Vps::$base;
 		$virtType = Vps::getVirtType();
 		if ($virtType == 'kvm') {
