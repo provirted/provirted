@@ -20,8 +20,10 @@ class Console extends Application
     	$this->topic('basic');
     	$this->topic('examples');
     	//Vps::setLogger($this->getLogger());
+        $args = $_SERVER['argv'];
+        array_shift($args);
     	Vps::setLogger(new Logger());
-    	Vps::getLogger()->addHistory(['type' => 'program', 'text' => implode(' ', $_SERVER['argv']), 'start' => time()]);
+    	Vps::getLogger()->addHistory(['type' => 'program', 'text' => implode(' ', $args), 'start' => time()]);
     }
 
     public function finish() {

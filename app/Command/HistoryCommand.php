@@ -17,6 +17,7 @@ provirted.phar history <subcommand>
 SUBCOMMANDS
 	list                      lists the history entries
 	show <id>                 displays one of the history entries, -1 is the always the latest entry
+    clean                     cleans up the history log removing certain entries
 ';
 	}
 }
