@@ -35,7 +35,7 @@ class HostInfoCommand extends Command {
         Vps::getLogger()->disableHistory();
 		$dir = Vps::$base;
 		$virtType = Vps::getVirtType();
-		if ($virtType == 'kvm') {
+        if ($virtType == 'kvm') {
 			$pool = Vps::getPoolType();
 		}
 		$root_used = trim(`df -P /| awk '{ print $5 }' |grep % | sed s#"%"#""#g`);
@@ -81,7 +81,7 @@ class HostInfoCommand extends Command {
 				$mounts[] = $dev.':'.$total.':'.$used.':'.$free.':'.$matchDir;
 			}
 		}
-		if ($pool != 'zfs') {
+		if ($virtType != 'kvm' || $pool != 'zfs') {
 			preg_match_all('/^\s*([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):([^:]*):(.*)$/m', trim(`pvdisplay -c 2>/dev/null|grep :vz:`), $matches);
 			foreach ($matches[1] as $idx => $value) {
 				$dev = $value;
@@ -170,7 +170,7 @@ class HostInfoCommand extends Command {
 				$freeg = ceil($freeb / 1073741824);
 				$usedg = ceil($usedb / 1073741824);
 				$out = $totalg.' '.$freeg;
-			} elseif ($pool != 'zfs') {
+			} elseif ($virtType != 'kvm' || $pool != 'zfs') {
 				if (trim(`lvdisplay 2>/dev/null|grep 'Allocated pool';`) == '') {
 					$parts = explode(':', trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/sbin:/usr/sbin"; pvdisplay -c 2>/dev/null|grep :vz:`));
 					$pesize = $parts[7];
