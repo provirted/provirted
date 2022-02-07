@@ -29,7 +29,7 @@ HELP;
 <bold>EXAMPLES</bold>
 	{$progName} create vps1001 vps2.provirted.com 192.168.1.103 centos-7 25 2048 1 password
 	{$progName} create --virt=virtuozzo vps1002 vps3.provirted.com 192.168.1.104 ubuntu-20.04 25 2048 1 password
-	{$progName} create -vv --order-id=2328714 --add-ip=192.168.1.101 --add-ip=192.168.1.102 --client-ip=127.0.0.1 vps1003 vps3.provirted.com 192.168.1.105 ubuntu-20.04 60 4096 2 password
+	{$progName} create -vv --order-id=2328714 --add-ip=192.168.1.101 --add-ip=192.168.1.102 --client-ip=127.0.0.1 --pasword=password vps1003 vps3.provirted.com 192.168.1.105 ubuntu-20.04 60 4096 2
 
 <underline>underlined text</underline>
 HELP;
@@ -45,6 +45,7 @@ HELP;
         $opts->add('i|add-ip+', 'Additional IPs')->multiple()->isa('string');
         $opts->add('c|client-ip:', 'Client IP')->isa('ip');
 		$opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
+        $opts->add('p|password:', 'Password')->isa('string');
 	}
 
     /** @param \CLIFramework\ArgInfoList $args */
@@ -72,6 +73,7 @@ HELP;
 		$error = 0;
         $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
         $extraIps = array_key_exists('add-ip', $opts->keys) ? $opts->keys['add-ip']->value : [];
+        $password = array_key_exists('password', $opts->keys) ? $opts->keys['password']->value : $password;
         $clientIp = array_key_exists('client-ip', $opts->keys) ? $opts->keys['client-ip']->value : '';
 		$orderId = array_key_exists('order-id', $opts->keys) ? $opts->keys['order-id']->value : '';
         $mac = array_key_exists('mac', $opts->keys) ? $opts->keys['mac']->value : '';
