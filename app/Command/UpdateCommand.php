@@ -128,7 +128,7 @@ class UpdateCommand extends Command
 		}
 		if ($updateCpu === true || $updateRam === true || $updateTimezone === true) {
 			if (Vps::getVirtType() == 'kvm')
-				Vps::runCommand("virsh dumpxml > {$vzid}.xml;");
+				Vps::runCommand("virsh dumpxml {$vzid} > {$vzid}.xml;");
 		}
 		if ($updateCpu === true) {
 			$cpu = $opts->keys['cpu']->value;
