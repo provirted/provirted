@@ -72,7 +72,7 @@ class Virtuozzo
 			return false;
 		}
 		Vps::getLogger()->error('Removing IP '.$ip.' from '.$vzid);
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --setmode restart --ipdel {$ips[$ip]}"));
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --ipdel {$ips[$ip]}"));
 		return true;
 	}
 

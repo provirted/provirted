@@ -88,13 +88,13 @@ class UpdateCommand extends Command
 			$quota = $opts->keys['quota']->value;
 			if ($quota == 'on') {
 				if (Vps::getVirtType() == 'virtuozzo') {
-					Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --quotaugidlimit 200 --save --setmode restart"));
+					Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --quotaugidlimit 200"));
 				} elseif (Vps::getVirtType() == 'openvz') {
 					Vps::getLogger()->write(Vps::runCommand("vzctl set {$vzid} --quotaugidlimit 200 --save --setmode restart"));
 				}
 			} elseif ($quota == 'off') {
 				if (Vps::getVirtType() == 'virtuozzo') {
-					Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --quotaugidlimit 0 --save --setmode restart"));
+					Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --quotaugidlimit 0"));
 				} elseif (Vps::getVirtType() == 'openvz') {
 					Vps::getLogger()->write(Vps::runCommand("vzctl set {$vzid} --quotaugidlimit 0 --save --setmode restart"));
 				}
