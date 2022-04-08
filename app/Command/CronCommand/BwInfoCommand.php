@@ -231,8 +231,10 @@ class BwInfoCommand extends Command {
 						else
 							list($in_last, $out_last) = array(0,0);
 						$vpss[$ip] = array($in, $out);
-						$in = $in - intval($in_last);
-						$out = $out - intval($out_last);
+						if ($in >= (int)$in_last && $out >= (int)$out_last) {
+							$in = $in - intval($in_last);
+							$out = $out - intval($out_last);
+						}
 						$total = $in + $out;
 						if ($total > 0) {
 							$totals[$ip] = array('in' => $in, 'out' => $out);
