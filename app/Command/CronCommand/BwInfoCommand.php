@@ -14,7 +14,7 @@ class BwInfoCommand extends Command {
 		return "lists the history entries";
 	}
 
-    /** @param \GetOptionKit\OptionCollection $opts */
+	/** @param \GetOptionKit\OptionCollection $opts */
 	public function options($opts) {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
@@ -22,7 +22,7 @@ class BwInfoCommand extends Command {
 		$opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
 	}
 
-    /** @param \CLIFramework\ArgInfoList $args */
+	/** @param \CLIFramework\ArgInfoList $args */
 	public function arguments($args) {
 	}
 
@@ -30,7 +30,7 @@ class BwInfoCommand extends Command {
 		Vps::init($this->getOptions(), []);
 		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
 		$opts = $this->getOptions();
-        $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
+		$useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
 		//$url = 'https://mynew.interserver.net/vps_queue.php';
 		$url = 'http://mynew.interserver.net:55151/queue.php';
 		$ips = $this->get_vps_ipmap();
@@ -155,7 +155,7 @@ class BwInfoCommand extends Command {
 		$vzctl = trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/bin:/usr/bin:/sbin:/usr/sbin"; which vzctl 2>/dev/null;`);
 		$totals = array();
 		if ($vzctl == '') {
-			if (file_exists(('/root/.traffic.last'))) {
+			if (file_exists('/root/.traffic.last')) {
 				$last = json_decode(file_get_contents('/root/.traffic.last'), true);
 				if (is_null($last) || $last === false)
 					$last = unserialize(file_get_contents('/root/.traffic.last'));
@@ -212,7 +212,7 @@ class BwInfoCommand extends Command {
 			}
 		} elseif (file_exists('/usr/bin/prlctl')) {
 			global $vpsName2Veid, $vpsVeid2Name;
-			if (file_exists(('/root/.traffic.last'))) {
+			if (file_exists('/root/.traffic.last')) {
 				$last = json_decode(file_get_contents('/root/.traffic.last'), true);
 				if (is_null($last) || $last === false)
 					$last = unserialize(file_get_contents('/root/.traffic.last'));
