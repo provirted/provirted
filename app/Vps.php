@@ -64,11 +64,11 @@ class Vps
 		}
 	}
 
-    /**
-    * returns an array of installed virtualization types
-    *
-    * @return array
-    */
+	/**
+	* returns an array of installed virtualization types
+	*
+	* @return array
+	*/
 	public static function getInstalledVirts() {
 		if (self::$virtInstalled === false) {
 			self::getLogger()->info2('detecting installed virtualization types.');
@@ -86,11 +86,11 @@ class Vps
 		return self::$virtInstalled;
 	}
 
-    /**
-    * determins if the host is setup for virtualization or not
-    *
-    * @return bool
-    */
+	/**
+	* determins if the host is setup for virtualization or not
+	*
+	* @return bool
+	*/
 	public static function isVirtualHost() {
 		$virt = self::getVirtType();
 		if ($virt !== false)
@@ -98,11 +98,11 @@ class Vps
 		return $virt !== false;
 	}
 
-    /**
-    * gets the type of virtualization we'll be using
-    *
-    * @return string
-    */
+	/**
+	* gets the type of virtualization we'll be using
+	*
+	* @return string
+	*/
 	public static function getVirtType() {
 		$virts = self::getInstalledVirts();
 		foreach ($virts as $idx => $virt)
@@ -140,16 +140,16 @@ class Vps
 			"vnc": "79.156.208.231"
 		} */
 
-        @mkdir($_SERVER['HOME'].'/.provirted', 0750, true);
-        file_put_contents($_SERVER['HOME'].'/.provirted/host.json', $response);
-        return $host;
+		@mkdir($_SERVER['HOME'].'/.provirted', 0750, true);
+		file_put_contents($_SERVER['HOME'].'/.provirted/host.json', $response);
+		return $host;
 	}
 
-    /**
-    * return a list of the running vps
-    *
-    * @return array
-    */
+	/**
+	* return a list of the running vps
+	*
+	* @return array
+	*/
 	public static function getRunningVps() {
 		if (self::getVirtType() == 'kvm')
 			return Kvm::getRunningVps();
@@ -159,11 +159,11 @@ class Vps
 			return OpenVz::getRunningVps();
 	}
 
-    /**
-    * return a list of all the vps
-    *
-    * @return array
-    */
+	/**
+	* return a list of all the vps
+	*
+	* @return array
+	*/
 	public static function getAllVps() {
 		if (self::getVirtType() == 'kvm')
 			return Kvm::getAllVps();
@@ -173,11 +173,11 @@ class Vps
 			return OpenVz::getAllVps();
 	}
 
-    /**
-    * return a list of all the vps on all installed virtualization types
-    *
-    * @return array
-    */
+	/**
+	* return a list of all the vps on all installed virtualization types
+	*
+	* @return array
+	*/
 	public static function getAllVpsAllVirts() {
 		$virts = self::getInstalledVirts();
 		$vpsList = [];
@@ -190,22 +190,22 @@ class Vps
 		return $vpsList;
 	}
 
-    /**
-    * determins if a vps is running or not
-    *
-    * @param int|string $vzid
-    * @return bool
-    */
+	/**
+	* determins if a vps is running or not
+	*
+	* @param int|string $vzid
+	* @return bool
+	*/
 	public static function isVpsRunning($vzid) {
 		return in_array($vzid, self::getRunningVps());
 	}
 
-    /**
-    * determines if a vps exists or not
-    *
-    * @param string $vzid
-    * @return bool
-    */
+	/**
+	* determines if a vps exists or not
+	*
+	* @param string $vzid
+	* @return bool
+	*/
 	public static function vpsExists($vzid) {
 		if (self::getVirtType() == 'kvm')
 			return Kvm::vpsExists($vzid);
@@ -219,11 +219,11 @@ class Vps
 		return 'https://mynew.interserver.net/queue.php';
 	}
 
-    /**
-    * gets the type of storage pool
-    *
-    * @return string
-    */
+	/**
+	* gets the type of storage pool
+	*
+	* @return string
+	*/
 	public static function getPoolType() {
 		$pool = '';
 		if (self::getVirtType() == 'kvm')
@@ -233,22 +233,22 @@ class Vps
 		return $pool;
 	}
 
-    /**
-    * gets the mac address of a vps
-    *
-    * @param int|string $vzid
-    * @return string
-    */
+	/**
+	* gets the mac address of a vps
+	*
+	* @param int|string $vzid
+	* @return string
+	*/
 	public static function getVpsMac($vzid) {
 		return Kvm::getVpsMac($vzid);
 	}
 
-    /**
-    * gets the ips configured on a vps
-    *
-    * @param int|string $vzid
-    * @return array
-    */
+	/**
+	* gets the ips configured on a vps
+	*
+	* @param int|string $vzid
+	* @return array
+	*/
 	public static function getVpsIps($vzid) {
 		if (self::getVirtType() == 'virtuozzo')
 			return Virtuozzo::getVpsIps($vzid);
@@ -258,13 +258,13 @@ class Vps
 			return Kvm::getVpsIps($vzid);
 	}
 
-    /**
-    * converts an order id into a mac address
-    *
-    * @param int $id
-    * @param bool $useAll
-    * @return string
-    */
+	/**
+	* converts an order id into a mac address
+	*
+	* @param int $id
+	* @param bool $useAll
+	* @return string
+	*/
 	public static function convertIdToMac($id, $useAll) {
 		$prefix = $useAll == true ? '00:0C:29' : '00:16:3E';
 		$suffix = strtoupper(sprintf("%06s", dechex($id)));
@@ -272,12 +272,12 @@ class Vps
 		return $mac;
 	}
 
-    /**
-    * gets the vnc/spice ports for a vps
-    *
-    * @param int|string $vzid
-    * @return array
-    */
+	/**
+	* gets the vnc/spice ports for a vps
+	*
+	* @param int|string $vzid
+	* @return array
+	*/
 	public static function getVpsRemotes($vzid) {
 		if (self::getVirtType() == 'virtuozzo')
 			return Virtuozzo::getVpsRemotes($vzid);
@@ -285,12 +285,12 @@ class Vps
 			return Kvm::getVpsRemotes($vzid);
 	}
 
-    /**
-    * gets the vnc port for a vps
-    *
-    * @param int|string $vzid
-    * @return int|string
-    */
+	/**
+	* gets the vnc port for a vps
+	*
+	* @param int|string $vzid
+	* @return int|string
+	*/
 	public static function getVncPort($vzid) {
 		if (self::getVirtType() == 'virtuozzo')
 			return Virtuozzo::getVncPort($vzid);
@@ -300,12 +300,12 @@ class Vps
 
 	public static function setupVnc($vzid, $clientIp = '') {
 		Xinetd::lock();
-        $remotes = self::getVpsRemotes($vzid);
-        if (self::getVirtType() == 'virtuozzo') {
-        	$vps = Virtuozzo::getVps($vzid);
-        	$vzid = $vps['EnvID'];
+		$remotes = self::getVpsRemotes($vzid);
+		if (self::getVirtType() == 'virtuozzo') {
+			$vps = Virtuozzo::getVps($vzid);
+			$vzid = $vps['EnvID'];
 		}
-        self::getLogger()->write('Parsing Services...');
+		self::getLogger()->write('Parsing Services...');
 		$services = Xinetd::parseEntries();
 		self::getLogger()->write('done'.PHP_EOL);
 		foreach ($services as $serviceName => $serviceData) {
@@ -383,6 +383,11 @@ class Vps
 			Virtuozzo::stopVps($vzid);
 		elseif (self::getVirtType() == 'openvz')
 			OpenVz::stopVps($vzid);
+	}
+
+	public static function resetVps($vzid) {
+		if (self::getVirtType() == 'kvm')
+			Kvm::resetVps($vzid);
 	}
 
 	public static function restartVps($vzid) {

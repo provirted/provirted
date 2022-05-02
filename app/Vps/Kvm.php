@@ -289,6 +289,11 @@ class Kvm
 		self::runBuildEbtables();
 	}
 
+	public static function resetVps($vzid) {
+		Vps::getLogger()->info('Resetting the VPS');
+		Vps::getLogger()->write(Vps::runCommand("virsh reset {$vzid}"));
+	}
+
 	public static function stopVps($vzid, $fast = false) {
 		Vps::getLogger()->info('Stopping the VPS');
 		Vps::getLogger()->indent();
