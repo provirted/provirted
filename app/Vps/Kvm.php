@@ -387,8 +387,8 @@ class Kvm
 				Vps::getLogger()->write(Vps::runCommand("qemu-img resize {$device} \"{$hd}\"M;"));
 				if ($template != 'empty') {
 					Vps::getLogger()->debug('Listing Partitions in Template');
-					$part = trim(Vps::runCommand("virt-list-partitions /vz/templates/{$template}.qcow2|tail -n 1;"));
-					$backuppart = trim(Vps::runCommand("virt-list-partitions /vz/templates/{$template}.qcow2|head -n 1;"));
+					$part = trim(Vps::runCommand("virt-filesystems -a /vz/templates/{$template}.qcow2 --partitions|tail -n 1;"));
+					$backuppart = trim(Vps::runCommand("virt-filesystems -a /vz/templates/{$template}.qcow2 --partitions|head -n 1;"));
 					Vps::getLogger()->debug('List Partitions got partition '.$part.' and backup partition '.$backuppart);
 					Vps::getLogger()->debug('Copying and Resizing Template');
 					Vps::getLogger()->write(Vps::runCommand("virt-resize --expand {$part} /vz/templates/{$template}.qcow2 {$device} || virt-resize --expand {$backuppart} /vz/templates/{$template}.qcow2 {$device} || cp -fv /vz/templates/{$template}.qcow2 {$device}"));
