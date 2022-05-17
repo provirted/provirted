@@ -3,6 +3,7 @@ namespace App\Command;
 
 use App\Vps;
 use App\Os\Dhcpd;
+use App\Os\Dhcpd6;
 use CLIFramework\Command;
 use CLIFramework\Formatter;
 use CLIFramework\Logger\ActionLogger;
@@ -14,7 +15,7 @@ class RebuildDhcpCommand extends Command {
 		return "Regenerates the dhcpd config and host assignments files.\n\n	<what> can be 'conf', 'vps', or 'all' to regenerate the config file, host assignmetns file, or both (respectivly)";
 	}
 
-    /** @param \GetOptionKit\OptionCollection $opts */
+	/** @param \GetOptionKit\OptionCollection $opts */
 	public function options($opts) {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
@@ -22,7 +23,7 @@ class RebuildDhcpCommand extends Command {
 		$opts->add('o|output', 'Output the file contents instead of writing it');
 	}
 
-    /** @param \CLIFramework\ArgInfoList $args */
+	/** @param \CLIFramework\ArgInfoList $args */
 	public function arguments($args) {
 		$args->add('what')->desc('rebuild the dhcpd.conf config (conf), dhcpd.vps host asignments (vps), or both (all)')->validValues(['conf','vps','all']);
 	}
@@ -42,9 +43,13 @@ class RebuildDhcpCommand extends Command {
 		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
 		$opts = $this->getOptions();
 		$output = array_key_exists('output', $opts->keys) && $opts->keys['output']->value == 1;
-		if (in_array($what, ['conf', 'all']))
+		if (in_array($what, ['conf', 'all'])) {
 			Dhcpd::rebuildConf($output);
-		if (in_array($what, ['vps', 'all']))
+			Dhcpd6::rebuildConf($output);
+		}
+		if (in_array($what, ['vps', 'all'])) {
 			Dhcpd::rebuildHosts($output);
+			Dhcpd6::rebuildHosts($output);
+		}
 	}
 }

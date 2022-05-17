@@ -25,12 +25,13 @@ class Dhcpd6
 		$dhcpFile = self::getFile();
 		$dhcpData = file_get_contents($dhcpFile);
 		$hosts = [];
-		if (preg_match_all('/^\s*host\s+(?P<host>\S+)\s+{\s+hardware\s+ethernet\s+(?P<mac>\S+)\s*;\s*fixed-address\s+(?P<ip>\S+)\s*;\s*}/msuU', $dhcpData, $matches)) {
+		if (preg_match_all('/^\s*host\s+(?P<host>\S+)\s+{\s+hardware\s+ethernet\s+(?P<mac>\S+)\s*;\s*fixed-address6\s+(?P<ipv6_ip>\S+)\s*;\s*fixed-range6\s+(?P<ipv6_range>\S+)\s*;\s*}/msuU', $dhcpData, $matches)) {
 			foreach ($matches[0] as $idx => $match) {
 				$host = $matches['host'][$idx];
 				$mac = $matches['mac'][$idx];
-				$ip = $matches['ip'][$idx];
-				$hosts[$host] = ['ip' => $ip, 'mac' => $mac];
+				$ipv6_ip = $matches['ipv6_ip'][$idx];
+				$ipv6_range = $matches['ipv6_range'][$idx];
+				$hosts[$host] = ['ipv6_ip' => $ipv6_ip, 'ipv6_range' => $ipv6_range, 'mac' => $mac];
 			}
 		}
 		return $hosts;
@@ -83,36 +84,31 @@ class Dhcpd6
 	*/
 	public static function rebuildConf($display = false) {
 		$host = Vps::getHostInfo();
-		$file = 'authoritative;
-option domain-name "interserver.net";
-option domain-name-servers 1.1.1.1;
-allow bootp;
-allow booting;
-ddns-update-style interim;
-default-lease-time 600;
-max-lease-time 7200;
-log-facility local7;
+		if (count($host['vlans6']) > 0) {
+			$file = 'allow leasequery;
+option dhcp6.name-servers 2606:4700:4700::1111;
+option dhcp6.domain-search "interserver.net","is.cc", "trouble-free.net";
+option dhcp6.preference 255;
+option dhcp6.rapid-commit;
+option dhcp6.info-refresh-time 21600;
 include "'.self::getFile().'";
 
 shared-network myvpn {
 ';
-		foreach ($host['vlans'] as $vlanId => $vlanData)
-			$file .= 'subnet '.$vlanData['network_ip'].' netmask '.$vlanData['netmask'].' {
-	next-server '.$vlanData['hostmin'].';
-	#range dynamic-bootp '.long2ip(ip2long($vlanData['hostmin']) + 1).' '.$vlanData['hostmax'].';
-	option domain-name-servers 64.20.34.50;
-	option domain-name "interserver.net";
-	option routers '.long2ip(ip2long($vlanData['hostmin'])).';
-	option broadcast-address '.$vlanData['broadcast'].';
-	default-lease-time 86400; # 24 hours
-	max-lease-time 172800; # 48 hours
+			foreach ($host['vlans6'] as $vlanId => $vlanData)
+				$file .= 'subnet '.$vlanData['vlans6_networks'].' {
+		# 1000 addresses available to clients (the third client should get NoAddrsAvail)
+		# range6 2604:a00:50:5::1000 2604:a00:50:5::2000;
+		# Use the whole /64 prefix for temporary addresses (i.e., direct application of RFC 4941)
+		# range 2604:a00:50:5:: temporary;
 }
 ';
-		$file .= '}';
-		if ($display === false)
-			file_put_contents(self::getConfFile(), $file);
-		else
-			Vps::getLogger()->write('cat > '.self::getConfFile().' <<EOF'.PHP_EOL.$file.PHP_EOL.'EOF'.PHP_EOL);
+			$file .= '}';
+			if ($display === false)
+				file_put_contents(self::getConfFile(), $file);
+			else
+				Vps::getLogger()->write('cat > '.self::getConfFile().' <<EOF'.PHP_EOL.$file.PHP_EOL.'EOF'.PHP_EOL);
+		}
 	}
 
 	/**
@@ -121,15 +117,18 @@ shared-network myvpn {
 	*/
 	public static function rebuildHosts($display = false) {
 		$host = Vps::getHostInfo();
-		$lines = [];
-		foreach ($host['vps'] as $vps)
-			$lines[] = 'host '.$vps['vzid'].' { hardware ethernet '.$vps['mac'].'; fixed-address '.$vps['ip'].';}';
-		$file = implode(PHP_EOL, $lines);
-		file_put_contents(self::getFile(), $file);
-		if ($display === false)
+		if (count($host['vlans6']) > 0) {
+			$lines = [];
+			foreach ($host['vps'] as $vps)
+				if (isset($vps['ipv6']) && !is_null($vps['ipv6']) && $vps['ipv6'] != '')
+					$lines[] = 'host '.$vps['vzid'].' { hardware ethernet '.$vps['mac'].'; fixed-address6 '.$vps['ipv6'].'; fixed-prefix6 '.$vps['ipv6_range'].'; }';
+			$file = implode(PHP_EOL, $lines);
 			file_put_contents(self::getFile(), $file);
-		else
-			Vps::getLogger()->write('cat > '.self::getFile().' <<EOF'.PHP_EOL.$file.PHP_EOL.'EOF'.PHP_EOL);
+			if ($display === false)
+				file_put_contents(self::getFile(), $file);
+			else
+				Vps::getLogger()->write('cat > '.self::getFile().' <<EOF'.PHP_EOL.$file.PHP_EOL.'EOF'.PHP_EOL);
+		}
 	}
 
 	/**
