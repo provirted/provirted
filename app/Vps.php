@@ -528,7 +528,7 @@ class Vps
 			}
 			while (!feof($pipes[1])) {
 				$stdout .= fgets($pipes[1]);
-				$info = stream_get_meta_data($fp);
+				$info = stream_get_meta_data($pipes[1]);
 				if ($info['timed_out'] == true) {
 					echo 'Connection timed out!';
 					break;
@@ -536,7 +536,7 @@ class Vps
 			}
 			while (!feof($pipes[2])) {
 				$stderr .= fgets($pipes[2]);
-				$info = stream_get_meta_data($fp);
+				$info = stream_get_meta_data($pipes[2]);
 				if ($info['timed_out'] == true) {
 					echo 'Connection timed out!';
 					break;
