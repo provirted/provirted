@@ -134,7 +134,7 @@ class Kvm
 				Vps::getLogger()->write(Vps::runCommand("sed s#\"/usr/libexec/qemu-kvm\"#\"/usr/bin/kvm\"#g -i {$vzid}.xml"));
 			}
 		}
-		if ($useAll == true || $ip === 'none') {
+		if ($useAll == true || $ip == 'none') {
 			Vps::getLogger()->debug('Removing IP information');
 			Vps::getLogger()->write(Vps::runCommand("sed -e s#\"^.*<parameter name='IP.*$\"#\"\"#g -e  s#\"^.*filterref.*$\"#\"\"#g -i {$vzid}.xml"));
 		} else {
