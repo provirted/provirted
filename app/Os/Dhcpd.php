@@ -124,7 +124,7 @@ shared-network myvpn {
 		$lines = [];
 		foreach ($host['vps'] as $vps)
 			if ($vps['ip'] != 'none' && $vps['ip'] != '')
-				$lines[] = 'host '.$vps['vzid'].' { hardware ethernet '.$vps['mac'].'; fixed-address '.$vps['ip'].';}';
+				$lines[] = 'host '.$vps['vzid'].' { hardware ethernet '.$vps['mac'].'; fixed-address '.$vps['ip'].'; }';
 		$file = implode(PHP_EOL, $lines);
 		file_put_contents(self::getFile(), $file);
 		if ($display === false)

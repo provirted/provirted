@@ -73,7 +73,7 @@ class Dhcpd6
 		$dhcpVps = self::getFile();
 		Vps::getLogger()->write(Vps::runCommand("/bin/cp -f {$dhcpVps} {$dhcpVps}.backup;"));
 		Vps::getLogger()->write(Vps::runCommand("grep -v -e \"host {$vzid} \" -e \"fixed-address {$ip};\" {$dhcpVps}.backup > {$dhcpVps}"));
-		Vps::getLogger()->write(Vps::runCommand("echo \"host {$vzid} { hardware ethernet {$mac}; fixed-address {$ip}; }\" >> {$dhcpVps}"));
+		Vps::getLogger()->write(Vps::runCommand("echo \"host {$vzid} { hardware ethernet {$mac}; fixed-address6 {$ipv6Ip}; fixed-prefix6 {$ipv6Range}; }\" >> {$dhcpVps}"));
 		Vps::getLogger()->write(Vps::runCommand("rm -f {$dhcpVps}.backup;"));
 		self::restart();
 	}

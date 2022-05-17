@@ -186,7 +186,7 @@ class Kvm
 			Dhcpd::setup($vzid, $ip, $mac);
 		}
 		if ($ipv6Ip !== false) {
-			//Dhcpd6::setup($vzid, $ipv6Ip, $ipv6Range, $mac);
+			Dhcpd6::setup($vzid, $ipv6Ip, $ipv6Range, $mac);
 		}
 		return $return == 0;
 	}
