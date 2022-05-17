@@ -24,6 +24,7 @@
 	},
 	"require-dev": {
 		"smarty/smarty": "*",
+		"twig/twig": ">=2.0@stable",
 		"phpdocumentor/reflection": "*",
 		"phpdocumentor/reflection-docblock": "dev-master"
 	},
