@@ -96,7 +96,7 @@ include "'.self::getFile().'";
 shared-network myvpn {
 ';
 			foreach ($host['vlans6'] as $vlanId => $vlanData)
-				$file .= 'subnet '.$vlanData['vlans6_networks'].' {
+				$file .= 'subnet6 '.$vlanData['vlans6_networks'].' {
 		# 1000 addresses available to clients (the third client should get NoAddrsAvail)
 		# range6 2604:a00:50:5::1000 2604:a00:50:5::2000;
 		# Use the whole /64 prefix for temporary addresses (i.e., direct application of RFC 4941)
