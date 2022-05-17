@@ -195,12 +195,12 @@ class Virtuozzo
 	}
 
 	public static function setupWebuzo($vzid) {
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y update'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y remove httpd sendmail xinetd firewalld samba samba-libs samba-common-tools samba-client samba-common samba-client-libs samba-common-libs rpcbind; userdel apache'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y install nano net-tools'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'rsync -a rsync://rsync.is.cc/admin /admin;/admin/yumcron;echo \"/usr/local/emps/bin/php /usr/local/webuzo/cron.php\" > /etc/cron.daily/wu.sh && chmod +x /etc/cron.daily/wu.sh'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'wget -N http://files.webuzo.com/install.sh -O /install.sh'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'chmod +x /install.sh;bash -l /install.sh;rm -f /install.sh'"));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y update'", $return, 320));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y remove httpd sendmail xinetd firewalld samba samba-libs samba-common-tools samba-client samba-common samba-client-libs samba-common-libs rpcbind; userdel apache'", $return, 60));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y install nano net-tools'", $return, 60));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'rsync -a rsync://rsync.is.cc/admin /admin;/admin/yumcron;echo \"/usr/local/emps/bin/php /usr/local/webuzo/cron.php\" > /etc/cron.daily/wu.sh && chmod +x /etc/cron.daily/wu.sh'", $return, 60));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'wget -N http://files.webuzo.com/install.sh -O /install.sh'", $return, 120));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'chmod +x /install.sh;bash -l /install.sh;rm -f /install.sh'", $return, 320));
 		Vps::getLogger()->info("Sleeping for a minute to workaround an ish");
 		sleep(10);
 		Vps::getLogger()->info("That was a pleasant nap.. back to the grind...");
@@ -210,14 +210,14 @@ class Virtuozzo
 		Vps::getLogger()->info("Sleeping for a minute to workaround an ish");
 		sleep(10);
 		Vps::getLogger()->info("That was a pleasant nap.. back to the grind...");
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y install perl nano screen wget psmisc net-tools'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'wget http://layer1.cpanel.net/latest'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'systemctl disable firewalld.service; systemctl mask firewalld.service; rpm -e firewalld xinetd httpd'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'bash -l latest'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y remove ea-apache24-mod_ruid2'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'killall httpd; if [ -e /bin/systemctl ]; then systemctl stop httpd.service; else service httpd stop; fi'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y install screen;'"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'screen -dmS cpinst \"prlctl exec {$vzid} 'yum -y install screen; yum -y install ea-liblsapi; yum -y install ea-apache24-mod_headers ea-apache24-mod_lsapi ea-apache24-mod_env; yum -y install ea-apache24-mod_deflate ea-apache24-mod_expires ea-apache24-mod_suexec; yum -y install ea-php72-php-litespeed ea-php72-php-opcache ea-php72-php-mysqlnd ea-php72-php-mcrypt ea-php72-php-gd ea-php72-php-mbstring; /usr/local/cpanel/bin/rebuild_phpconf  --default=ea-php72 --ea-php72=lsapi; /usr/sbin/whmapi1 php_ini_set_directives directive-1=post_max_size%3A32M directive-2=upload_max_filesize%3A128M directive-3=memory_limit%3A256M version=ea-php72; cd /opt/cpanel; for i in \$(find * -maxdepth 0 -name \\\"ea-php*\\\"); do /usr/local/cpanel/bin/rebuild_phpconf --default=ea-php72 --\$i=lsapi; done; /scripts/restartsrv_httpd; rsync -a rsync://rsync.is.cc/admin /admin && cd /etc/cron.daily && ln -s /admin/wp/webuzo_wp_cli_auto.sh /etc/cron.daily/webuzo_wp_cli_auto.sh;\"'"));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y install perl nano screen wget psmisc net-tools'", $return, 60));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'wget http://layer1.cpanel.net/latest'", $return, 60));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'systemctl disable firewalld.service; systemctl mask firewalld.service; rpm -e firewalld xinetd httpd'", $return, 60));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'bash -l latest'", $return, 60));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y remove ea-apache24-mod_ruid2'", $return, 60));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'killall httpd; if [ -e /bin/systemctl ]; then systemctl stop httpd.service; else service httpd stop; fi'", $return, 60));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y install screen;'", $return, 60));
+		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'screen -dmS cpinst \"prlctl exec {$vzid} 'yum -y install screen; yum -y install ea-liblsapi; yum -y install ea-apache24-mod_headers ea-apache24-mod_lsapi ea-apache24-mod_env; yum -y install ea-apache24-mod_deflate ea-apache24-mod_expires ea-apache24-mod_suexec; yum -y install ea-php72-php-litespeed ea-php72-php-opcache ea-php72-php-mysqlnd ea-php72-php-mcrypt ea-php72-php-gd ea-php72-php-mbstring; /usr/local/cpanel/bin/rebuild_phpconf  --default=ea-php72 --ea-php72=lsapi; /usr/sbin/whmapi1 php_ini_set_directives directive-1=post_max_size%3A32M directive-2=upload_max_filesize%3A128M directive-3=memory_limit%3A256M version=ea-php72; cd /opt/cpanel; for i in \$(find * -maxdepth 0 -name \\\"ea-php*\\\"); do /usr/local/cpanel/bin/rebuild_phpconf --default=ea-php72 --\$i=lsapi; done; /scripts/restartsrv_httpd; rsync -a rsync://rsync.is.cc/admin /admin && cd /etc/cron.daily && ln -s /admin/wp/webuzo_wp_cli_auto.sh /etc/cron.daily/webuzo_wp_cli_auto.sh;\"'", $return, 320));
 
 	}
 }

@@ -504,7 +504,15 @@ class Vps
 		array_unshift($return, 'last');
 	}
 
-	public static function runCommand($cmd, &$return = 0) {
+	/**
+	* runs a commnand
+	*
+	* @param string $cmd command to run
+	* @param int $return store the return value
+	* @param false|int $timeout false or timeout in seconds
+	* @return string stdout.stderr text
+	*/
+	public static function runCommand($cmd, &$return = 0, $timeout = false) {
 		$descs = [
 			0 => ['pipe','r'],
 			1 => ['pipe','w'],
@@ -514,11 +522,25 @@ class Vps
 		$stderr = '';
 		$proc = proc_open($cmd, $descs, $pipes);
 		if (is_resource($proc)) {
+			if ($timeout !== false) {
+				stream_set_timeout($pipes[1], $timeout);
+				stream_set_timeout($pipes[2], $timeout);
+			}
 			while (!feof($pipes[1])) {
 				$stdout .= fgets($pipes[1]);
+				$info = stream_get_meta_data($fp);
+				if ($info['timed_out'] == true) {
+					echo 'Connection timed out!';
+					break;
+				}
 			}
 			while (!feof($pipes[2])) {
 				$stderr .= fgets($pipes[2]);
+				$info = stream_get_meta_data($fp);
+				if ($info['timed_out'] == true) {
+					echo 'Connection timed out!';
+					break;
+				}
 			}
 			fclose($pipes[0]);
 			fclose($pipes[1]);
