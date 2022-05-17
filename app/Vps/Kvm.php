@@ -354,8 +354,10 @@ class Kvm
 			self::runBuildEbtables();
 		}
 		$base = Vps::$base;
-		Vps::getLogger()->write(Vps::runCommand("{$base}/tclimit {$ip};"));
-		self::blockSmtp($vzid, $id);
+		if ($ip != 'none') {
+			Vps::getLogger()->write(Vps::runCommand("{$base}/tclimit {$ip};"));
+			self::blockSmtp($vzid, $id);
+		}
 		if ($pool != 'zfs' && $useAll == false) {
 			Vps::getLogger()->write(Vps::runCommand("/admin/kvmenable ebflush;"));
 			Vps::getLogger()->write(Vps::runCommand("{$base}/buildebtablesrules | sh;"));
