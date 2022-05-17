@@ -105,7 +105,7 @@ class Virtuozzo
 		return true;
 	}
 
-	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password) {
+	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range) {
 		$ram = ceil($ram / 1024);
 		Vps::getLogger()->write(Vps::runCommand("prlctl create {$vzid} --vmtype ct --ostemplate {$template}", $return));
 		$passsword = escapeshellarg($password);

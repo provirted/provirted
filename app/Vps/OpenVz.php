@@ -106,7 +106,7 @@ class OpenVz
 		return true;
 	}
 
-	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password) {
+	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range) {
 		if (!file_exists('/vz/template/cache/'.$template)) { // if tempolate doesnt exist download it
 			if (strpos($template, '://') !== false) { // if web url
 				Vps::getLogger()->write(Vps::runCommand("wget -O /vz/template/cache/{$template} {$template}"));
@@ -120,9 +120,9 @@ class OpenVz
 				Vps::getLogger()->write("Already Exists in .gz, not changing anything");
 			} else {
 				Vps::getLogger()->write("Recompressing {$vps_os} to .gz");
-    			Vps::getLogger()->write(Vps::runCommand("xz -d --keep '/vz/template/cache/{$template}'"));
-    			$uncompressed = escapeshellarg('/vz/template/cache/'.$pathInfo['filename']);
-    			Vps::getLogger()->write(Vps::runCommand("gzip -9 {$uncompressed}"));
+				Vps::getLogger()->write(Vps::runCommand("xz -d --keep '/vz/template/cache/{$template}'"));
+				$uncompressed = escapeshellarg('/vz/template/cache/'.$pathInfo['filename']);
+				Vps::getLogger()->write(Vps::runCommand("gzip -9 {$uncompressed}"));
 			}
 		}
 		$uname = posix_uname();
@@ -143,7 +143,7 @@ class OpenVz
 			$layout = $layout == '--layout ploop' ? '--layout simfs' : $layout;
 			Vps::getLogger()->write(Vps::runCommand("vzctl create {$vzid} --ostemplate {$template} {$layout} {$config} --ipadd {$ip} --hostname {$hostname}", $return));
 		}
-        @mkdir('/vz/root/'.$vzid, 0777, true);
+		@mkdir('/vz/root/'.$vzid, 0777, true);
 		$slices = $cpu;
 		$wiggle = 1000;
 		$dCacheWiggle = 400000;
@@ -158,8 +158,8 @@ class OpenVz
 		$numIptentB = $numIptent;
 		$numPty = 35 + (24 * $slices);
 		$numPtyB = $numPty;
-        $numTcpSock = 1800 + $slices;
-        $numTcpSockB = $numTcpSock;
+		$numTcpSock = 1800 + $slices;
+		$numTcpSockB = $numTcpSock;
 		$numOtherSock = 1900 * $slices;
 		$numOtherSockB = $numOtherSock;
 		$numFile = 32 * $avNumProc;
@@ -229,9 +229,9 @@ class OpenVz
 			}
 		}
 		if ($template == 'centos-7-x86_64-breadbasket') {
-    		Vps::getLogger()->write("Sleeping for a minute to workaround an ish");
-    		sleep(60);
-    		Vps::getLogger()->write("That was a pleasant nap.. back to the grind...");
+			Vps::getLogger()->write("Sleeping for a minute to workaround an ish");
+			sleep(60);
+			Vps::getLogger()->write("That was a pleasant nap.. back to the grind...");
 		}
 		if ($template == 'centos-7-x86_64-nginxwordpress') {
 			Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} /root/change.sh {$password} 2>&1"));
@@ -299,19 +299,19 @@ class OpenVz
 		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'bash -l latest'"));
 		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y remove ea-apache24-mod_ruid2'"));
 		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'killall httpd; if [ -e /bin/systemctl ]; then systemctl stop httpd.service; else service httpd stop; fi'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-liblsapi'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_headers'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_lsapi'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_env'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_deflate'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_expires'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_suexec'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-litespeed'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-opcache'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-mysqlnd'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-mcrypt'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-gd'"));
-        Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-mbstring'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-liblsapi'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_headers'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_lsapi'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_env'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_deflate'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_expires'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-apache24-mod_suexec'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-litespeed'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-opcache'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-mysqlnd'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-mcrypt'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-gd'"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'yum -y install ea-php72-php-mbstring'"));
 		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} '/usr/local/cpanel/bin/rebuild_phpconf  --default=ea-php72 --ea-php72=lsapi'"));
 		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} '/usr/sbin/whmapi1 php_ini_set_directives directive-1=post_max_size%3A32M directive-2=upload_max_filesize%3A128M directive-3=memory_limit%3A256M version=ea-php72'"));
 		Vps::getLogger()->write(Vps::runCommand("vzctl exec {$vzid} 'cd /opt/cpanel; for i in \$(find * -maxdepth 0 -name \"ea-php*\"); do /usr/local/cpanel/bin/rebuild_phpconf --default=ea-php72 --\$i=lsapi; done'"));

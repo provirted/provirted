@@ -110,7 +110,7 @@ class Kvm
 		Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
 	}
 
-	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll) {
+	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll, $ipv6Ip, $ipv6Range) {
 		Vps::getLogger()->info('Creating VPS Definition');
 		$base = Vps::$base;
 		Vps::getLogger()->indent();
