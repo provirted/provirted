@@ -100,7 +100,7 @@ include "'.self::getFile().'";
 shared-network myvpn {
 ';
 			foreach ($host['vlans6'] as $vlanId => $vlanData)
-				$parts = expode('/', $vlanData['vlans6_networks']);
+				$parts = explode('/', $vlanData['vlans6_networks']);
 				$gateway = $parts[0].'1';
 				$file .= 'subnet6 '.$vlanData['vlans6_networks'].' {
 
