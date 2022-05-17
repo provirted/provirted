@@ -25,7 +25,7 @@ class Dhcpd6
 		$dhcpFile = self::getFile();
 		$dhcpData = file_get_contents($dhcpFile);
 		$hosts = [];
-		if (preg_match_all('/^\s*host\s+(?P<host>\S+)\s+{\s+hardware\s+ethernet\s+(?P<mac>\S+)\s*;\s*fixed-address6\s+(?P<ipv6_ip>\S+)\s*;\s*fixed-range6\s+(?P<ipv6_range>\S+)\s*;\s*}/msuU', $dhcpData, $matches)) {
+		if (preg_match_all('/^\s*host\s+(?P<host>\S+)\s+{\s+hardware\s+ethernet\s+(?P<mac>\S+)\s*;\s*fixed-range6\s+(?P<ipv6_range>\S+)\s*;\s*fixed-address6\s+(?P<ipv6_ip>\S+)\s*;\s*}/msuU', $dhcpData, $matches)) {
 			foreach ($matches[0] as $idx => $match) {
 				$host = $matches['host'][$idx];
 				$mac = $matches['mac'][$idx];
@@ -84,10 +84,14 @@ class Dhcpd6
 	*/
 	public static function rebuildConf($display = false) {
 		$host = Vps::getHostInfo();
+
 		if (count($host['vlans6']) > 0) {
-			$file = 'allow leasequery;
-option dhcp6.name-servers 2606:4700:4700::1111;
-option dhcp6.domain-search "interserver.net","is.cc", "trouble-free.net";
+			$file = 'authoritative;
+ddns-update-style standard;
+ddns-dual-stack-mixed-mode true;
+update-conflict-detection true;
+update-optimization false;
+allow leasequery;
 option dhcp6.preference 255;
 option dhcp6.rapid-commit;
 option dhcp6.info-refresh-time 21600;
@@ -96,11 +100,16 @@ include "'.self::getFile().'";
 shared-network myvpn {
 ';
 			foreach ($host['vlans6'] as $vlanId => $vlanData)
+				$parts = expode('/', $vlanData['vlans6_networks']);
+				$gateway = $parts[0].'1';
 				$file .= 'subnet6 '.$vlanData['vlans6_networks'].' {
-		# 1000 addresses available to clients (the third client should get NoAddrsAvail)
-		# range6 2604:a00:50:5::1000 2604:a00:50:5::2000;
+
+		# 100 addresses available to clients (the third client should get NoAddrsAvail)
+		# range6 2604:a00:50:5::100 2604:a00:50:5::200;
 		# Use the whole /64 prefix for temporary addresses (i.e., direct application of RFC 4941)
 		# range 2604:a00:50:5:: temporary;
+		option dhcp6.name-servers 2606:4700:4700::1111;
+		option dhcp6.domain-search "interserver.net","is.cc", "trouble-free.net";
 }
 ';
 			$file .= '}';
@@ -121,7 +130,7 @@ shared-network myvpn {
 			$lines = [];
 			foreach ($host['vps'] as $vps)
 				if (isset($vps['ipv6']) && !is_null($vps['ipv6']) && $vps['ipv6'] != '')
-					$lines[] = 'host '.$vps['vzid'].' { hardware ethernet '.$vps['mac'].'; fixed-address6 '.$vps['ipv6'].'; fixed-prefix6 '.$vps['ipv6_range'].'; }';
+					$lines[] = 'host '.$vps['vzid'].' { hardware ethernet '.$vps['mac'].'; fixed-prefix6 '.$vps['ipv6_range'].'; fixed-address6 '.$vps['ipv6'].'; }';
 			$file = implode(PHP_EOL, $lines);
 			file_put_contents(self::getFile(), $file);
 			if ($display === false)
