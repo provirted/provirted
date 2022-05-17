@@ -4,6 +4,7 @@ namespace App\Vps;
 use App\XmlToArray;
 use App\Vps;
 use App\Os\Dhcpd;
+use App\Os\Dhcpd6;
 use App\Os\Xinetd;
 
 class Kvm
@@ -133,7 +134,7 @@ class Kvm
 				Vps::getLogger()->write(Vps::runCommand("sed s#\"/usr/libexec/qemu-kvm\"#\"/usr/bin/kvm\"#g -i {$vzid}.xml"));
 			}
 		}
-		if ($useAll == true) {
+		if ($useAll == true || $ip === 'none') {
 			Vps::getLogger()->debug('Removing IP information');
 			Vps::getLogger()->write(Vps::runCommand("sed -e s#\"^.*<parameter name='IP.*$\"#\"\"#g -e  s#\"^.*filterref.*$\"#\"\"#g -i {$vzid}.xml"));
 		} else {
@@ -181,7 +182,12 @@ class Kvm
 		//Vps::getLogger()->write(Vps::runCommand("virsh setmem {$vzid} $ram;"));
 		//Vps::getLogger()->write(Vps::runCommand("virsh setvcpus {$vzid} $cpu;"));
 		Vps::getLogger()->unIndent();
-		Dhcpd::setup($vzid, $ip, $mac);
+		if ($ip != 'none') {
+			Dhcpd::setup($vzid, $ip, $mac);
+		}
+		if ($ipv6Ip !== false) {
+			//Dhcpd6::setup($vzid, $ipv6Ip, $ipv6Range, $mac);
+		}
 		return $return == 0;
 	}
 
