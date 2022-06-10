@@ -134,6 +134,10 @@ class Kvm
 				Vps::getLogger()->write(Vps::runCommand("sed s#\"/usr/libexec/qemu-kvm\"#\"/usr/bin/kvm\"#g -i {$vzid}.xml"));
 			}
 		}
+		if (stripos($template, 'windows10') !== false) {
+			Vps::getLogger()->debug('Replacing VirtIO Device with SCSI Device for Windows 10');
+			Vps::getLogger()->write(Vps::runCommand("sed s#\"dev='vda' bus='virtio'\"#\"dev='sda' bus='scsi'\"#g -i {$vzid}.xml"));
+		}
 		if ($useAll == true || $ip == 'none') {
 			Vps::getLogger()->debug('Removing IP information');
 			Vps::getLogger()->write(Vps::runCommand("sed -e s#\"^.*<parameter name='IP.*$\"#\"\"#g -e  s#\"^.*filterref.*$\"#\"\"#g -i {$vzid}.xml"));
