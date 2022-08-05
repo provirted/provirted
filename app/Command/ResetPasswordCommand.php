@@ -36,7 +36,15 @@ class ResetPasswordCommand extends Command {
 			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
 			return 1;
 		}
+        if (Vps::isVpsRunning($vzid)) {
+            Vps::stopVps($vzid);
+        }
 		$base = Vps::$base;
-		Vps::getLogger()->write(Vps::runCommand("{$base}/vps_kvm_setup_password_clear.sh {$vzid}"));
+        mkdir('/mntpass');
+        Vps::getLogger()->write(Vps::runCommand("guestmount -d {$vzid} -i -w /mntpass"));
+        Vps::getLogger()->write(Vps::runCommand("{$base}/enable_user_and_clear_password -u Administrator /mntpass/Windows/System32/config/SAM"));
+        Vps::getLogger()->write(Vps::runCommand("guestunmount /mntpass"));
+        rmdir('/mntpass');
+        Vps::startVps($vzid);
 	}
 }

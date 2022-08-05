@@ -310,7 +310,7 @@ class Kvm
 			Vps::getLogger()->info('Sending Softwawre Power-Off');
 			Vps::getLogger()->write(Vps::runCommand("virsh shutdown {$vzid}"));
 			$waited = 0;
-			$maxWait = 120;
+			$maxWait = 240;
 			$sleepTime = 5;
 			while ($waited <= $maxWait && $stopped == false) {
 				if (Vps::isVpsRunning($vzid)) {
