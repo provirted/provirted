@@ -40,6 +40,8 @@ class ResetPasswordCommand extends Command {
             Vps::stopVps($vzid);
         }
 		$base = Vps::$base;
+        $part = Vps::runCommand("virt-inspector --no-applications -d {$vzid} |grep \"mountpoint.*>/<\"|cut -d\\\" -f2");
+        Vps::getLogger()->write(Vps::runCommand("guestfish add-domain {$vzid} : run : ntfsfix {$part} : unmount-all"));
         mkdir('/mntpass');
         Vps::getLogger()->write(Vps::runCommand("guestmount -d {$vzid} -i -w /mntpass"));
         Vps::getLogger()->write(Vps::runCommand("{$base}/enable_user_and_clear_password -u Administrator /mntpass/Windows/System32/config/SAM"));
