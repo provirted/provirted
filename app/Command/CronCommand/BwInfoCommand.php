@@ -221,8 +221,8 @@ class BwInfoCommand extends Command {
 			$vpss = array();
 			foreach ($matches['uuid'] as $idx => $uuid) {
 				if ($uuid != '0') {
-					$in = intval($matches['in_bytes'][$idx]);
-					$out = intval($matches['out_bytes'][$idx]);
+					$in = $matches['in_bytes'][$idx];
+					$out = $matches['out_bytes'][$idx];
 					if ((false !== $ip = array_search($uuid, $ips))
 					|| (array_key_exists($uuid, $vpsName2Veid) && false !== $ip = array_search($vpsName2Veid[$uuid], $ips))
 					|| (array_key_exists($uuid, $vpsVeid2Name) && false !== $ip = array_search($vpsVeid2Name[$uuid], $ips))) {
@@ -232,10 +232,10 @@ class BwInfoCommand extends Command {
 							list($in_last, $out_last) = array(0,0);
 						$vpss[$ip] = array($in, $out);
 						if ($in >= (int)$in_last && $out >= (int)$out_last) {
-							$in = $in - intval($in_last);
-							$out = $out - intval($out_last);
+							$in = bcsub($in, $in_last);
+							$out = bcsub($out, $out_last);
 						}
-						$total = $in + $out;
+						$total = bcadd($in, $out);
 						if ($total > 0) {
 							$totals[$ip] = array('in' => $in, 'out' => $out);
 						}
