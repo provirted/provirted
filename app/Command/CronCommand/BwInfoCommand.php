@@ -190,10 +190,10 @@ class BwInfoCommand extends Command {
 						if (isset($macs[$mac]) && isset($vnets[$macs[$mac]])) {
 							$vpss[$vps] = $vnets[$macs[$mac]];
 							$vpss[$vps]['ip'] = $ip;
-							if (isset($last) && isset($last[$vps]) && isset($last['vps']['in']) && isset($vpss[$vps])) {
+							if (isset($last) && isset($last[$vps]) && isset($last[$vps]['in']) && isset($vpss[$vps])) {
 								$in_new = $vpss[$vps]['in'] - intval($last[$vps]['in']);
 								$out_new = $vpss[$vps]['out'] - intval($last[$vps]['out']);
-							} elseif (isset($last) && isset($last[$vps]) && isset($last['vps']['in'])) {
+							} elseif (isset($last) && isset($last[$vps]) && isset($last[$vps]['in'])) {
 								$in_new = intval($last[$vps]['in']);
 								$out_new = intval($last[$vps]['out']);
 							} else {
