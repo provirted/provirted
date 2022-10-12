@@ -55,7 +55,7 @@ class Os
     * @return float usable memory in kb
     */
 	public static function getUsableRam() {
-		$ram = floor(self::getTotalRam() / 100 * 70);
+		$ram = floor(self::getTotalRam() / 100 * 95);
 		return $ram;
 	}
 
