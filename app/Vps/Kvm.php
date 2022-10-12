@@ -153,6 +153,9 @@ class Kvm
 			Vps::getLogger()->write(Vps::runCommand("sed s#\"^.*<mac address.*$\"#\"\"#g -i {$vzid}.xml"));
 		}
 		Vps::getLogger()->debug('Setting CPU limits');
+        if ($useAll === true || substr($template, 0, 7) != 'windows') {
+            Vps::getLogger()->write(Vps::runCommand("sed s#\"<cpu mode='host-model'/>\"#\"<cpu mode='host-passthrough' check='none'>\n    <cache mode='passthrough'/>\n  </cpu>\"#g -i {$vzid}.xml;"));
+        }
 		//Vps::getLogger()->write(Vps::runCommand("sed s#\"<\(vcpu.*\)>.*</vcpu>\"#\"<vcpu placement='static' current='{$cpu}'>{$maxCpu}</vcpu>\"#g -i {$vzid}.xml;"));
         Vps::getLogger()->write(Vps::runCommand("sed s#\"<\(vcpu.*\)>.*</vcpu>\"#\"<vcpu placement='static' current='{$cpu}'>{$cpu}</vcpu>\"#g -i {$vzid}.xml;"));
 		Vps::getLogger()->debug('Setting Max Memory limits');
