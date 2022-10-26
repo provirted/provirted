@@ -336,7 +336,7 @@ class Vps
 	}
 
 	public static function vncScreenshotSwift($vzid) {
-		if (in_array(self::getVirtType(), ['kvm', 'virtuozzo'])) {
+		if (in_array(self::getVirtType(), ['kvm', 'virtuozzo']) && self::isVpsRunning($vzid)) {
 			$vncPort = self::getVncPort($vzid);
 			$base = self::$base;
 			if ($vncPort != '' && intval($vncPort) > 1000) {
