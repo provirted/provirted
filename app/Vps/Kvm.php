@@ -67,7 +67,12 @@ class Kvm
 	}
 
 	public static function getVpsMac($vzid) {
-		$mac = self::getVps($vzid)['domain']['devices']['interface']['mac_attr']['address'];
+        $response = self::getVps($vzid);
+        if (isset($response['domain']['devices']['interface']['mac_attr']['address'])) {
+		    $mac = self::getVps($vzid)['domain']['devices']['interface']['mac_attr']['address'];
+        } else {
+            $mac = '';
+        }
 		return $mac;
 	}
 
