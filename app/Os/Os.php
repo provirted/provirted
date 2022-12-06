@@ -52,10 +52,11 @@ class Os
 
     /**
     * gets the usable memory in kb (70% of total memory)
+    * @param int $pct (default 95) optional percent of total ram to use
     * @return float usable memory in kb
     */
-	public static function getUsableRam() {
-		$ram = floor(self::getTotalRam() / 100 * 95);
+	public static function getUsableRam(int $pct = 95) {
+		$ram = floor(self::getTotalRam() / 100 * $pct);
 		return $ram;
 	}
 
