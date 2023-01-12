@@ -390,6 +390,24 @@ class VpsInfoCommand extends Command {
 			'speed' => $speed,
 			'cpu_flags' => $flags,
 		);
+        $suffixes = [
+            'B' => 1,
+            'K' => 1024,
+            'M' => 1024*1024,
+            'G' => 1024*1024*1024,
+            'T' => 1024*1024*1024*1024,
+        ];
+        if (Vps::getPoolType() == 'zfs' && preg_match_all('/^vz/(?P<vps>[^@]+)@(?P<name>\S+)\s+(?P<used>[\d\.]+)(?P<suffix>[BKMGT])\s+(?P<date>\S+\s+\S+\s+\S+\s+\S+\s+\S+)$/muU', `zfs list -t snapshot -o name,used,creation`, $matches)) {
+            foreach ($matches['vps'] as $idx => $vps) {
+                if (!isset($servers[$vps]['snapshots']))
+                    $servers[$vps]['snapshots'] = [];
+                $servers[$vps]['snapshots'][] = [
+                    'name' => $matches['name'][$idx],
+                    'used' => floatval($matches['used'][$idx]) * $suffixes[$matches['suffix'][$idx]],
+                    'date' => strtotime($matches['date'][$idx]),
+                ];
+            }
+        }
 		$cmd = 'curl --connect-timeout 60 --max-time 600 -k -F action=server_list -F servers="'.base64_encode(gzcompress(serialize($servers), 9)).'"  '
 		. (isset($ips) ? ' -F ips="'.base64_encode(gzcompress(serialize($ips), 9)).'" ' : '')
 		. $curl_cmd.' "'.$url.'" 2>/dev/null; /bin/rm -f shot_*jpg shot_*jpg.gz 2>/dev/null;';
