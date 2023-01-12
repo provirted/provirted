@@ -403,7 +403,7 @@ class VpsInfoCommand extends Command {
                     $servers[$vps]['snapshots'] = [];
                 $servers[$vps]['snapshots'][] = [
                     'name' => $matches['name'][$idx],
-                    'used' => floatval($matches['used'][$idx]) * $suffixes[$matches['suffix'][$idx]],
+                    'used' => ceil(floatval($matches['used'][$idx]) * $suffixes[$matches['suffix'][$idx]]),
                     'date' => strtotime($matches['date'][$idx]),
                 ];
             }
