@@ -397,7 +397,7 @@ class VpsInfoCommand extends Command {
             'G' => 1024*1024*1024,
             'T' => 1024*1024*1024*1024,
         ];
-        if (Vps::getPoolType() == 'zfs' && preg_match_all('/^vz/(?P<vps>[^@]+)@(?P<name>\S+)\s+(?P<used>[\d\.]+)(?P<suffix>[BKMGT])\s+(?P<date>\S+\s+\S+\s+\S+\s+\S+\s+\S+)$/muU', `zfs list -t snapshot -o name,used,creation`, $matches)) {
+        if (Vps::getPoolType() == 'zfs' && preg_match_all('/^vz\/(?P<vps>[^@]+)@(?P<name>\S+)\s+(?P<used>[\d\.]+)(?P<suffix>[BKMGT])\s+(?P<date>\S+\s+\S+\s+\S+\s+\S+\s+\S+)$/muU', `zfs list -t snapshot -o name,used,creation`, $matches)) {
             foreach ($matches['vps'] as $idx => $vps) {
                 if (!isset($servers[$vps]['snapshots']))
                     $servers[$vps]['snapshots'] = [];
