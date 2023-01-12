@@ -399,13 +399,15 @@ class VpsInfoCommand extends Command {
         ];
         if (Vps::getPoolType() == 'zfs' && preg_match_all('/^vz\/(?P<vps>[^@]+)@(?P<name>\S+)\s+(?P<used>[\d\.]+)(?P<suffix>[BKMGT])\s+(?P<date>\S+\s+\S+\s+\S+\s+\S+\s+\S+)$/muU', `zfs list -t snapshot -o name,used,creation`, $matches)) {
             foreach ($matches['vps'] as $idx => $vps) {
-                if (!isset($servers[$vps]['snapshots']))
-                    $servers[$vps]['snapshots'] = [];
-                $servers[$vps]['snapshots'][] = [
-                    'name' => $matches['name'][$idx],
-                    'used' => ceil(floatval($matches['used'][$idx]) * $suffixes[$matches['suffix'][$idx]]),
-                    'date' => strtotime($matches['date'][$idx]),
-                ];
+                if (isset($servers[$vps])) {
+                    if (!isset($servers[$vps]['snapshots']))
+                        $servers[$vps]['snapshots'] = [];
+                    $servers[$vps]['snapshots'][] = [
+                        'name' => $matches['name'][$idx],
+                        'used' => ceil(floatval($matches['used'][$idx]) * $suffixes[$matches['suffix'][$idx]]),
+                        'date' => strtotime($matches['date'][$idx]),
+                    ];
+                }
             }
         }
 		$cmd = 'curl --connect-timeout 60 --max-time 600 -k -F action=server_list -F servers="'.base64_encode(gzcompress(serialize($servers), 9)).'"  '
