@@ -176,7 +176,7 @@ class BwInfoCommand extends Command {
 					$macs = array();
 					foreach ($vnetmacs as $line) {
 						list($vnet, $mac) = explode(' ', $line);
-						$mac = preg_replace('/^52:16:3e:/', '00:16:3e:', $mac);
+                        $shortMac = substr($mac, 3);
 						//echo "Got  VNet:$vnet   Mac:$mac\n";
 						$vnets[$vnet]['mac'] = $mac;
 						$macs[$mac] = $vnet;
@@ -187,8 +187,9 @@ class BwInfoCommand extends Command {
 					foreach ($macvps as $line) {
 						list($mac, $vps, $ip) = explode(' ', $line);
 						//echo "Got  Mac:$mac   VPS:$vps   IP:$ip\n";
-						if (isset($macs[$mac]) && isset($vnets[$macs[$mac]])) {
-							$vpss[$vps] = $vnets[$macs[$mac]];
+                        $shortMac = substr($mac, 3);
+						if (isset($macs[$shortMac]) && isset($vnets[$macs[$shortMac]])) {
+							$vpss[$vps] = $vnets[$macs[$shortMac]];
 							$vpss[$vps]['ip'] = $ip;
 							if (isset($last) && isset($last[$vps]) && isset($last[$vps]['in']) && isset($vpss[$vps])) {
 								$in_new = $vpss[$vps]['in'] - intval($last[$vps]['in']);
