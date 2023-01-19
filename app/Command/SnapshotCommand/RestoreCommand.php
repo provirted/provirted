@@ -47,7 +47,7 @@ class RestoreCommand extends Command {
             Vps::getLogger()->error("The specified snapshot {$snapshot} does not seem to exist for VPS {$vzid}");
             return 1;
         }
-        Vps::stopVps($vzid);
+        Vps::stopVps($vzid, true);
         Vps::getLogger()->error("Restoring vz/{$vzid}@{$snapshot} snapshot");
         Vps::getLogger()->write(Vps::runCommand("zfs rollback vz/{$vzid}@{$snapshot}"));
         Vps::startVps($vzid);
