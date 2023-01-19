@@ -5,6 +5,7 @@ use App\Vps;
 use App\Os\Xinetd;
 use CLIFramework\Command;
 use CLIFramework\Formatter;
+use CLIFramework\Component\Table\Table;
 use CLIFramework\Logger\ActionLogger;
 use CLIFramework\Debug\LineIndicator;
 use CLIFramework\Debug\ConsoleDebug;

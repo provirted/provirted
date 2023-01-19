@@ -5,6 +5,7 @@ use App\Vps;
 use App\Os\Xinetd;
 use CLIFramework\Command;
 use CLIFramework\Formatter;
+use CLIFramework\Component\Table\Table;
 use CLIFramework\Logger\ActionLogger;
 use CLIFramework\Debug\LineIndicator;
 use CLIFramework\Debug\ConsoleDebug;
@@ -36,9 +37,25 @@ class ListCommand extends Command {
 		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
 		$opts = $this->getOptions();
 		$dryRun = array_key_exists('dry', $opts->keys) && $opts->keys['dry']->value == 1;
-		Xinetd::lock();
-		Xinetd::secure($dryRun);
-		Xinetd::unlock();
-		Xinetd::restart();
+        if (Vps::getPoolType() == 'zfs' && preg_match_all('/^vz\/(?P<vps>[^@]+)@(?P<name>\S+)\s+(?P<used>[\d\.]+)(?P<suffix>[BKMGT])\s+(?P<date>\S+\s+\S+\s+\S+\s+\S+\s+\S+)$/muU', `zfs list -t snapshot -o name,used,creation`, $matches)) {
+            $table = new Table;
+            $table->setHeaders(['VPS', 'Snapshot Name', 'Size', 'Created']);
+            $servers = [];
+            foreach ($matches['vps'] as $idx => $vps) {
+                if (!isset($servers[$vps]))
+                    $servers[$vps] = [];
+                $name = $matches['name'][$idx];
+                $size = ceil(floatval($matches['used'][$idx]) * $suffixes[$matches['suffix'][$idx]]);
+                $date = strtotime($matches['date'][$idx]);
+                $servers[$vps][$name] = [
+                    'size' => $size,
+                    'date' => $date
+                ];
+                $table->addRow([$vps, $name, $size, $date]);
+            }
+            echo $table->render();
+        } else {
+            echo "This system does not support snapshots\n";
+        }
 	}
 }
