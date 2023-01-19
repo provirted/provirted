@@ -53,7 +53,7 @@ class ListCommand extends Command {
                     $servers[$vps] = [];
                 $name = $matches['name'][$idx];
                 $size = ceil(floatval($matches['used'][$idx]) * $suffixes[$matches['suffix'][$idx]]);
-                $date = strtotime($matches['date'][$idx]);
+                $date = date('Y-m-d H:i:s', strtotime($matches['date'][$idx]));
                 $servers[$vps][$name] = [
                     'size' => $size,
                     'date' => $date
