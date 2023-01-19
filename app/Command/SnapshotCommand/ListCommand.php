@@ -29,11 +29,6 @@ class ListCommand extends Command {
 
 	public function execute() {
 		Vps::init($this->getOptions(), []);
-		if (!Vps::isVirtualHost()) {
-			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
-			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
-			return 1;
-		}
 		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
 		$opts = $this->getOptions();
 		$dryRun = array_key_exists('dry', $opts->keys) && $opts->keys['dry']->value == 1;
@@ -44,7 +39,16 @@ class ListCommand extends Command {
             'G' => 1024*1024*1024,
             'T' => 1024*1024*1024*1024,
         ];
-        if (Vps::getPoolType() == 'zfs' && preg_match_all('/^vz\/(?P<vps>[^@]+)@(?P<name>\S+)\s+(?P<used>[\d\.]+)(?P<suffix>[BKMGT])\s+(?P<date>\S+\s+\S+\s+\S+\s+\S+\s+\S+)$/muU', `zfs list -t snapshot -o name,used,creation`, $matches)) {
+        if (!Vps::isVirtualHost()) {
+            Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
+            Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
+            return 1;
+        }
+        if (Vps::getPoolType() != 'zfs') {
+            Vps::getLogger()->error("This system is not setup for zfs");
+            return 1;
+        }
+        if (preg_match_all('/^vz\/(?P<vps>[^@]+)@(?P<name>\S+)\s+(?P<used>[\d\.]+)(?P<suffix>[BKMGT])\s+(?P<date>\S+\s+\S+\s+\S+\s+\S+\s+\S+)$/muU', `zfs list -t snapshot -o name,used,creation`, $matches)) {
             $table = new Table;
             $table->setHeaders(['VPS', 'Snapshot Name', 'Size', 'Created']);
             $servers = [];
@@ -61,8 +65,6 @@ class ListCommand extends Command {
                 $table->addRow([$vps, $name, $size, $date]);
             }
             echo $table->render();
-        } else {
-            echo "This system does not support snapshots\n";
         }
 	}
 }

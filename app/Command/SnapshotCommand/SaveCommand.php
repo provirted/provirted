@@ -37,16 +37,16 @@ class SaveCommand extends Command {
             Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
             return 1;
         }
-        if (Vps::getPoolType() == 'zfs') {
-            Vps::stopVps($vzid);
-            Vps::getLogger()->error("Creating vz/{$vzid}@first snapshot");
-            Vps::getLogger()->write(Vps::runCommand("zfs destroy vz/{$vzid}@third"));
-            Vps::getLogger()->write(Vps::runCommand("zfs rename vz/{$vzid}@second vz/{$vzid}@third"));
-            Vps::getLogger()->write(Vps::runCommand("zfs rename vz/{$vzid}@first vz/{$vzid}@second"));
-            Vps::getLogger()->write(Vps::runCommand("zfs snapshot vz/{$vzid}@first"));
-            Vps::startVps($vzid);
-        } else {
+        if (Vps::getPoolType() != 'zfs') {
             Vps::getLogger()->error("This system is not setup for zfs");
+            return 1;
         }
+        Vps::stopVps($vzid);
+        Vps::getLogger()->error("Creating vz/{$vzid}@first snapshot");
+        Vps::getLogger()->write(Vps::runCommand("zfs destroy vz/{$vzid}@third"));
+        Vps::getLogger()->write(Vps::runCommand("zfs rename vz/{$vzid}@second vz/{$vzid}@third"));
+        Vps::getLogger()->write(Vps::runCommand("zfs rename vz/{$vzid}@first vz/{$vzid}@second"));
+        Vps::getLogger()->write(Vps::runCommand("zfs snapshot vz/{$vzid}@first"));
+        Vps::startVps($vzid);
 	}
 }
