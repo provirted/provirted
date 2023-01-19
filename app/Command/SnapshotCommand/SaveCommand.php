@@ -33,9 +33,14 @@ class SaveCommand extends Command {
 			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
 			return 1;
 		}
-		Xinetd::lock();
-		Xinetd::remove($vzid);
-		Xinetd::unlock();
-		Xinetd::restart();
+        if (!Vps::vpsExists($vzid)) {
+            Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
+            return 1;
+        }
+        Vps::getLogger()->error("Creating vz/{$vzid}@first snapshot");
+        Vps::getLogger()->write(Vps::runCommand("zfs destroy vz/{$vzid}@third"));
+        Vps::getLogger()->write(Vps::runCommand("zfs rename vz/{$vzid}@second vz/{$vzid}@third"));
+        Vps::getLogger()->write(Vps::runCommand("zfs rename vz/{$vzid}@first vz/{$vzid}@second"));
+        Vps::getLogger()->write(Vps::runCommand("zfs snapshot vz/{$vzid}@first"));
 	}
 }
