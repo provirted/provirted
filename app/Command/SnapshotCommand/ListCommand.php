@@ -37,6 +37,13 @@ class ListCommand extends Command {
 		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
 		$opts = $this->getOptions();
 		$dryRun = array_key_exists('dry', $opts->keys) && $opts->keys['dry']->value == 1;
+        $suffixes = [
+            'B' => 1,
+            'K' => 1024,
+            'M' => 1024*1024,
+            'G' => 1024*1024*1024,
+            'T' => 1024*1024*1024*1024,
+        ];
         if (Vps::getPoolType() == 'zfs' && preg_match_all('/^vz\/(?P<vps>[^@]+)@(?P<name>\S+)\s+(?P<used>[\d\.]+)(?P<suffix>[BKMGT])\s+(?P<date>\S+\s+\S+\s+\S+\s+\S+\s+\S+)$/muU', `zfs list -t snapshot -o name,used,creation`, $matches)) {
             $table = new Table;
             $table->setHeaders(['VPS', 'Snapshot Name', 'Size', 'Created']);
