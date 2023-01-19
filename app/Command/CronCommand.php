@@ -12,7 +12,7 @@ class CronCommand extends Command {
         echo '
 SYNTAX
 
-provirted.phar vnc <subcommand>
+provirted.phar cron <subcommand>
 
 SUBCOMMANDS
 	secure [--dry]            removes old and bad entries to maintain security
@@ -22,12 +22,12 @@ SUBCOMMANDS
 	rebuild [--dry]           removes old and bad entries to maintain security, and recreates all port mappings
 
 EXAMPLES
-	provirted.phar vnc setup vps4000 8.8.8.8
-	provirted.phar vnc remove vps4000
-	provirted.phar vnc secure
-	provirted.phar vnc restart
-	provirted.phar vnc rebuild --dry
-	provirted.phar vnc rebuild
+	provirted.phar cron bw-info
+	provirted.phar cron cpu-usage
+	provirted.phar cron host-info
+	provirted.phar cron host-info-extra
+	provirted.phar cron virtuozzo-update
+	provirted.phar cron vps-info
 ';
 	}
 }
