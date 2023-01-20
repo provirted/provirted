@@ -19,6 +19,7 @@ class VpsInfoCommand extends Command {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
 		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
+        $opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
 	}
 
     /** @param \CLIFramework\ArgInfoList $args */
@@ -27,8 +28,12 @@ class VpsInfoCommand extends Command {
 
 	public function execute() {
 		Vps::init($this->getOptions(), []);
+        /** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
+        $opts = $this->getOptions();
+        $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
 		$dir = Vps::$base;
-		$url = 'https://mynew.interserver.net/vps_queue.php';
+        $module = $useAll === true ? 'quickservers' : 'vps';
+        $url = 'https://mynew.interserver.net/'.($module == 'quickservers' ? 'qs' : 'vps').'_queue.php';
 		$curl_cmd = '';
 		$servers = array();
 		$ips = array();
@@ -410,7 +415,7 @@ class VpsInfoCommand extends Command {
                 }
             }
         }
-		$cmd = 'curl --connect-timeout 60 --max-time 600 -k -F action=server_list -F servers="'.base64_encode(gzcompress(serialize($servers), 9)).'"  '
+		$cmd = 'curl --connect-timeout 60 --max-time 600 -k -F module='.$module.' -F action=server_list -F servers="'.base64_encode(gzcompress(serialize($servers), 9)).'"  '
 		. (isset($ips) ? ' -F ips="'.base64_encode(gzcompress(serialize($ips), 9)).'" ' : '')
 		. $curl_cmd.' "'.$url.'" 2>/dev/null; /bin/rm -f shot_*jpg shot_*jpg.gz 2>/dev/null;';
 		// echo $cmd.PHP_EOL;
