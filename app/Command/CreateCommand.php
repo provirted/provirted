@@ -70,6 +70,10 @@ HELP;
 			Vps::getLogger()->writeln("Check the help to see how to prepare a virtualization environment.");
 			return 1;
 		}
+        if (file_exists('/vz/'.$vzid.'/protected')) {
+            Vps::getLogger()->error("The VPS '{$vzid}' you specified is protected.");
+            return 1;
+        }
 		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
 		$opts = $this->getOptions();
 		Vps::getLogger()->info('Initializing Variables and process Options and Arguments');

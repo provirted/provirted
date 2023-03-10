@@ -39,6 +39,10 @@ class DestroyCommand extends Command {
 			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
 			return 1;
 		}
+        if (file_exists('/vz/'.$vzid.'/protected')) {
+            Vps::getLogger()->error("The VPS '{$vzid}' you specified is protected.");
+            return 1;
+        }
 		Vps::destroyVps($vzid);
         if ($orderId != '') {
             $url = Vps::getUrl();
