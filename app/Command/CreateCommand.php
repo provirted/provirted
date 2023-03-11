@@ -43,7 +43,7 @@ HELP;
         $opts->add('m|mac:', 'MAC Address')->isa('string');
         $opts->add('o|order-id:', 'Order ID')->isa('number');
         $opts->add('i|add-ip+', 'Additional IPs')->multiple()->isa('string');
-        $opts->add('c|client-ip:', 'Client IP')->isa('ip');
+        $opts->add('c|client-ip:', 'Client IP')->isa('string');
         $opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
         $opts->add('p|password:', 'Password')->isa('string');
         $opts->add('io-limit', 'The IO Limit in bytes/s')->isa('number');
