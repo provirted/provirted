@@ -106,7 +106,7 @@ class OpenVz
 		return true;
 	}
 
-	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range) {
+	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
 		if (!file_exists('/vz/template/cache/'.$template)) { // if tempolate doesnt exist download it
 			if (strpos($template, '://') !== false) { // if web url
 				Vps::getLogger()->write(Vps::runCommand("wget -O /vz/template/cache/{$template} {$template}"));

@@ -461,13 +461,13 @@ class Vps
 			Kvm::setupStorage($vzid, $device, $pool, $hd);
 	}
 
-	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $maxRam, $maxCpu, $useAll, $password, $ipv6Ip, $ipv6Range) {
+	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $maxRam, $maxCpu, $useAll, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
 		if (self::getVirtType() == 'kvm')
-			return Kvm::defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll, $ipv6Ip, $ipv6Range);
+			return Kvm::defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit);
 		elseif (self::getVirtType() == 'virtuozzo')
-			return Virtuozzo::defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range);
+			return Virtuozzo::defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit);
 		elseif (self::getVirtType() == 'openvz')
-			return OpenVz::defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range);
+			return OpenVz::defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit);
 		return true;
 	}
 
@@ -479,9 +479,9 @@ class Vps
 		}
 	}
 
-	public static function installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts) {
+	public static function installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit) {
 		if (self::getVirtType() == 'kvm')
-			return Kvm::installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts);
+			return Kvm::installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit);
 		return true;
 	}
 

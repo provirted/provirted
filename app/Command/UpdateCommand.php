@@ -30,6 +30,8 @@ class UpdateCommand extends Command
 		$opts->add('password-reset', 'Sets the root/Administrator password');
 		$opts->add('u|username:', 'Sets the password for the given username instead of the root/Administrator')->isa('string');
 		$opts->add('q|quota:', 'Enable or Disable Quotas setting them to on or off')->isa('string')->validValues(['on', 'off']);
+        $opts->add('io-limit', 'The IO Limit in bytes/s')->isa('number');
+        $opts->add('iops-limit', 'The IO Limit in iops')->isa('number');
 	}
 
 	/** @param \CLIFramework\ArgInfoList $args */
@@ -59,6 +61,8 @@ class UpdateCommand extends Command
 		$updateCgroups = array_key_exists('cgroups', $opts->keys);
 		$updateTimezone = array_key_exists('timezone', $opts->keys);
 		$updateHostname = array_key_exists('hostname', $opts->keys);
+        $updateIoLimit = array_key_exists('io-limit', $opts->keys);
+        $updateIopsLimit = array_key_exists('iops-limit', $opts->keys);
 		if ($updateCpu === true || $updateRam === true || $updateHd === true || $updateTimezone === true || $updateHostname === true || $updatePassword === true || $updatePasswordReset === true)
 			Vps::stopVps($vzid);
 		if ($updateHd === true) {

@@ -116,7 +116,7 @@ class Kvm
 		Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
 	}
 
-	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll, $ipv6Ip, $ipv6Range) {
+	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
 		Vps::getLogger()->info('Creating VPS Definition');
 		$base = Vps::$base;
 		Vps::getLogger()->indent();
@@ -353,9 +353,9 @@ class Kvm
 		}
 	}
 
-	public static function installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts) {
+	public static function installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit) {
 		Vps::getLogger()->info('Installing OS Template');
-		return $pool == 'zfs' ? self::installTemplateV2($vzid, $template, $password, $device, $hd, $kpartxOpts) : self::installTemplateV1($vzid, $template, $password, $device, $hd, $kpartxOpts);
+		return $pool == 'zfs' ? self::installTemplateV2($vzid, $template, $password, $device, $hd, $kpartxOpts, $ioLimit, $iopsLimit) : self::installTemplateV1($vzid, $template, $password, $device, $hd, $kpartxOpts, $ioLimit, $iopsLimit);
 	}
 
 	public static function setupRouting($vzid, $ip, $pool, $useAll, $id) {
@@ -378,7 +378,7 @@ class Kvm
 		Vps::getLogger()->write(Vps::runCommand("/admin/kvmenable blocksmtp {$vzid}"));
 	}
 
-	public static function installTemplateV2($vzid, $template, $password, $device, $hd, $kpartxOpts) {
+	public static function installTemplateV2($vzid, $template, $password, $device, $hd, $kpartxOpts, $ioLimit, $iopsLimit) {
 		// kvmv2
 		$base = Vps::$base;
 		$downloadedTemplate = substr($template, 0, 7) == 'http://' || substr($template, 0, 8) == 'https://' || substr($template, 0, 6) == 'ftp://';
@@ -424,14 +424,17 @@ class Kvm
 				Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzid} /vz/{$vzid}/os.qcow2 vda --targetbus virtio --driver qemu --subdriver qcow2 --type disk --sourcetype file --persistent;"));
 			}
 			Vps::getLogger()->write(Vps::runCommand("virsh dumpxml {$vzid} > {$vzid}.xml"));
-			Vps::getLogger()->write(Vps::runCommand("sed s#\"type='qcow2'/\"#\"type='qcow2' cache='writeback' discard='unmap'/\"#g -i {$vzid}.xml"));
+            if ($ioLimit !== false || $iopsLimit !== false) {
+                Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<disk type='file' device='disk'>\)\"#\"\1\n<iotune>\n".($ioLimit === false ? '' : "<total_bytes_sec>{$ioLimit}</total_bytes_sec>\n").($iopsLimit === false ? '' : "<total_iops_sec>{$iopsLimit}</total_iops_sec>\n")."</iotune>\"#g -i {$vzid}.xml"));
+            }
+            Vps::getLogger()->write(Vps::runCommand("sed s#\"type='qcow2'/\"#\"type='qcow2' cache='writeback' discard='unmap'/\"#g -i {$vzid}.xml"));
 			Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml"));
 			Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
 		}
 		return true;
 	}
 
-	public static function installTemplateV1($vzid, $template, $password, $device, $hd, $kpartxOpts) {
+	public static function installTemplateV1($vzid, $template, $password, $device, $hd, $kpartxOpts, $ioLimit, $iopsLimit) {
 		$adjust_partitions = 1;
 		$base = Vps::$base;
 		$softraid = trim(Vps::runCommand("grep -l -v idle /sys/block/md*/md/sync_action 2>/dev/null"));
