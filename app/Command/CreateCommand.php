@@ -88,8 +88,8 @@ HELP;
         $mac = array_key_exists('mac', $opts->keys) ? $opts->keys['mac']->value : '';
         $ipv6Ip = array_key_exists('ipv6-ip', $opts->keys) ? $opts->keys['ipv6-ip']->value : false;
         $ipv6Range = array_key_exists('ipv6-range', $opts->keys) ? $opts->keys['ipv6-range']->value : false;
-        $ioLimit = array_key_exists('io-limit', $opts->keys) ? $opts->keys['io-limit']->value : false;
-        $iopsLimit = array_key_exists('iops-limit', $opts->keys) ? $opts->keys['iops-limit']->value : false;
+        $ioLimit = $useAll === false && array_key_exists('io-limit', $opts->keys) ? $opts->keys['io-limit']->value : false;
+        $iopsLimit = $useAll === false && array_key_exists('iops-limit', $opts->keys) ? $opts->keys['iops-limit']->value : false;
         if ($orderId == '')
             $orderId = str_replace(['qs', 'windows', 'linux', 'vps'], ['', '', '', ''], $vzid); // convert hostname to id
         if ($mac == '' && is_numeric($orderId))
