@@ -46,8 +46,8 @@ HELP;
         $opts->add('c|client-ip:', 'Client IP')->isa('string');
         $opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
         $opts->add('p|password:', 'Password')->isa('string');
-        $opts->add('io-limit', 'The IO Limit in bytes/s')->isa('string');
-        $opts->add('iops-limit', 'The IO Limit in iops')->isa('string');
+        $opts->add('io-limit:', 'The IO Limit in bytes/s')->isa('number');
+        $opts->add('iops-limit:', 'The IO Limit in iops')->isa('number');
         $opts->add('ipv6-ip:', 'The IPv6 IP Address if one is to be set')->isa('string');
         $opts->add('ipv6-range:', 'The IPv6 IP Range if one is to be set')->isa('string');
     }
