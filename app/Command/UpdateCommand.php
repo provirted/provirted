@@ -63,7 +63,7 @@ class UpdateCommand extends Command
 		$updateHostname = array_key_exists('hostname', $opts->keys);
         $updateIoLimit = array_key_exists('io-limit', $opts->keys);
         $updateIopsLimit = array_key_exists('iops-limit', $opts->keys);
-		if ($updateCpu === true || $updateRam === true || $updateHd === true || $updateTimezone === true || $updateHostname === true || $updatePassword === true || $updatePasswordReset === true)
+		if ($updateCpu === true || $updateRam === true || $updateHd === true || $updateTimezone === true || $updateHostname === true || $updatePassword === true || $updatePasswordReset === true || $updateIoLimit === true || $updateIopsLimit === true)
 			Vps::stopVps($vzid);
 		if ($updateHd === true) {
 			$hd = $opts->keys['hd']->value;
@@ -130,7 +130,7 @@ class UpdateCommand extends Command
 				Vps::getLogger()->write(Vps::runCommand("virt-customize -d {$vzid} --hostname {$hostname};"));
 			}
 		}
-		if ($updateCpu === true || $updateRam === true || $updateTimezone === true) {
+		if ($updateCpu === true || $updateRam === true || $updateTimezone === true || $updateIoLimit === true || $updateIopsLimit === true) {
 			if (Vps::getVirtType() == 'kvm')
 				Vps::runCommand("virsh dumpxml {$vzid} > {$vzid}.xml;");
 		}
@@ -219,15 +219,33 @@ class UpdateCommand extends Command
 		}
 		if ($updateTimezone === true) {
 			$timezone = $opts->keys['timezone']->value;
-			Vps::getLogger()->write(Vps::runCommand("sed s#\"<clock.*$\"#\"<clock offset='timezone' timezone='{$timezone}'/>\"#g -i {$vzid}.xml"));
+            if (Vps::getVirtType() == 'kvm') {
+			    Vps::getLogger()->write(Vps::runCommand("sed s#\"<clock.*$\"#\"<clock offset='timezone' timezone='{$timezone}'/>\"#g -i {$vzid}.xml"));
+            }
 		}
-		if ($updateCpu === true || $updateRam === true || $updateTimezone === true) {
+        if ($updateIoLimit === true) {
+            $ioLimit = $opts->keys['io-limit']->value;
+            if (Vps::getVirtType() == 'kvm') {
+                Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<total_bytes_sec>\).*\(</total_bytes_sec>\)\"#\"\1{$ioLimit}\2\"#g -i {$vzid}.xml"));
+            } elseif (Vps::getVirtType() == 'virtuozzo') {
+                Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --iolimit {$ioLimit}"));
+            }
+        }
+        if ($updateIopsLimit === true) {
+            $iopsLimit = $opts->keys['iops-limit']->value;
+            if (Vps::getVirtType() == 'kvm') {
+                Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<total_iops_sec>\).*\(</total_iops_sec>\)\"#\"\1{$iopsLimit}\2\"#g -i {$vzid}.xml"));
+            } elseif (Vps::getVirtType() == 'virtuozzo') {
+                Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --iopslimit {$iopsLimit}"));
+            }
+        }
+		if ($updateCpu === true || $updateRam === true || $updateTimezone === true || $updateIoLimit === true || $updateIopsLimit === true) {
 			if (Vps::getVirtType() == 'kvm') {
 				Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml;"));
 				Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
 			}
 		}
-		if ($updateCpu === true || $updateRam === true || $updateHd === true || $updateTimezone === true || $updateHostname === true || $updatePassword === true || $updatePasswordReset === true)
+		if ($updateCpu === true || $updateRam === true || $updateHd === true || $updateTimezone === true || $updateHostname === true || $updatePassword === true || $updatePasswordReset === true || $updateIoLimit === true || $updateIopsLimit === true)
 			Vps::startVps($vzid);
 		if ($updateCgroups === true) {
 			$slices = $opts->keys['cgroups']->value;
