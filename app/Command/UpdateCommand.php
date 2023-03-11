@@ -223,20 +223,24 @@ class UpdateCommand extends Command
 			    Vps::getLogger()->write(Vps::runCommand("sed s#\"<clock.*$\"#\"<clock offset='timezone' timezone='{$timezone}'/>\"#g -i {$vzid}.xml"));
             }
 		}
-        if ($updateIoLimit === true) {
-            $ioLimit = $opts->keys['io-limit']->value;
-            if (Vps::getVirtType() == 'kvm') {
-                Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<total_bytes_sec>\).*\(</total_bytes_sec>\)\"#\"\\1{$ioLimit}\\2\"#g -i {$vzid}.xml"));
-            } elseif (Vps::getVirtType() == 'virtuozzo') {
-                Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --iolimit {$ioLimit}"));
+        if ($updateIoLimit === true || $updateIopsLimit === true && Vps::getVirtType() == 'kvm' && trim(Vps::runCommand("grep \"<iotune>\" {$vzid}.xml")) == '') {
+            Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<disk type='file' device='disk'>\)\"#\"\\1\\n<iotune>\\n".($updateIoLimit === false ? '' : "<total_bytes_sec>".$opts->keys['io-limit']->value."</total_bytes_sec>\\n").($updateIopsLimit === false ? '' : "<total_iops_sec>".$opts->keys['iops-limit']->value."</total_iops_sec>\\n")."</iotune>\"#g -i {$vzid}.xml"));
+        } else {
+            if ($updateIoLimit === true) {
+                $ioLimit = $opts->keys['io-limit']->value;
+                if (Vps::getVirtType() == 'kvm') {
+                    Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<total_bytes_sec>\).*\(</total_bytes_sec>\)\"#\"\\1{$ioLimit}\\2\"#g -i {$vzid}.xml"));
+                } elseif (Vps::getVirtType() == 'virtuozzo') {
+                    Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --iolimit {$ioLimit}"));
+                }
             }
-        }
-        if ($updateIopsLimit === true) {
-            $iopsLimit = $opts->keys['iops-limit']->value;
-            if (Vps::getVirtType() == 'kvm') {
-                Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<total_iops_sec>\).*\(</total_iops_sec>\)\"#\"\\1{$iopsLimit}\\2\"#g -i {$vzid}.xml"));
-            } elseif (Vps::getVirtType() == 'virtuozzo') {
-                Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --iopslimit {$iopsLimit}"));
+            if ($updateIopsLimit === true) {
+                $iopsLimit = $opts->keys['iops-limit']->value;
+                if (Vps::getVirtType() == 'kvm') {
+                    Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<total_iops_sec>\).*\(</total_iops_sec>\)\"#\"\\1{$iopsLimit}\\2\"#g -i {$vzid}.xml"));
+                } elseif (Vps::getVirtType() == 'virtuozzo') {
+                    Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --iopslimit {$iopsLimit}"));
+                }
             }
         }
 		if ($updateCpu === true || $updateRam === true || $updateTimezone === true || $updateIoLimit === true || $updateIopsLimit === true) {
