@@ -420,15 +420,18 @@ class Kvm
 			if (stripos($template, 'windows10') !== false) {
 				Vps::getLogger()->debug('Replacing VirtIO Device with SCSI Device for Windows 10');
 				Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzid} /vz/{$vzid}/os.qcow2 sda --targetbus scsi --driver qemu --subdriver qcow2 --type disk --sourcetype file --persistent;"));
+                $dev = 'sda';
 			} else {
 				Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzid} /vz/{$vzid}/os.qcow2 vda --targetbus virtio --driver qemu --subdriver qcow2 --type disk --sourcetype file --persistent;"));
+                $dev = 'vda';
 			}
 			Vps::getLogger()->write(Vps::runCommand("virsh dumpxml {$vzid} > {$vzid}.xml"));
-            if ($ioLimit !== false || $iopsLimit !== false) {
-                Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<disk type='file' device='disk'>\)\"#\"\\1\\n<iotune>\\n".($ioLimit === false ? '' : "<total_bytes_sec>{$ioLimit}</total_bytes_sec>\\n").($iopsLimit === false ? '' : "<total_iops_sec>{$iopsLimit}</total_iops_sec>\\n")."</iotune>\"#g -i {$vzid}.xml"));
-            }
             Vps::getLogger()->write(Vps::runCommand("sed s#\"type='qcow2'/\"#\"type='qcow2' cache='writeback' discard='unmap'/\"#g -i {$vzid}.xml"));
 			Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml"));
+            if ($updateIoLimit !== false)
+                Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune {$vzid} {$dev} --total-bytes-sec ".$opts->keys['io-limit']->value." --config"));
+            if ($updateIopsLimit !== false)
+                Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune {$vzid} {$dev} --total-iops-sec ".$opts->keys['iops-limit']->value." --config"));
 			Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
 		}
 		return true;
