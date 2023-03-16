@@ -428,10 +428,10 @@ class Kvm
 			Vps::getLogger()->write(Vps::runCommand("virsh dumpxml {$vzid} > {$vzid}.xml"));
             Vps::getLogger()->write(Vps::runCommand("sed s#\"type='qcow2'/\"#\"type='qcow2' cache='writeback' discard='unmap'/\"#g -i {$vzid}.xml"));
 			Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml"));
-            if ($updateIoLimit !== false)
-                Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune {$vzid} {$dev} --total-bytes-sec ".$opts->keys['io-limit']->value." --config"));
-            if ($updateIopsLimit !== false)
-                Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune {$vzid} {$dev} --total-iops-sec ".$opts->keys['iops-limit']->value." --config"));
+            if ($ioLimit !== false)
+                Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune {$vzid} {$dev} --total-bytes-sec {$ioLimit} --config"));
+            if ($iopsLimit !== false)
+                Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune {$vzid} {$dev} --total-iops-sec {$iopsLimit} --config"));
 			Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
 		}
 		return true;
