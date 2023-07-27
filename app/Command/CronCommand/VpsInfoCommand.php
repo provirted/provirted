@@ -33,6 +33,7 @@ class VpsInfoCommand extends Command {
         $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
 		$dir = Vps::$base;
         $module = $useAll === true ? 'quickservers' : 'vps';
+        Vps::getLogger()->disableHistory();
         $url = 'https://mynew.interserver.net/'.($module == 'quickservers' ? 'qs' : 'vps').'_queue.php';
 		$curl_cmd = '';
 		$servers = array();
