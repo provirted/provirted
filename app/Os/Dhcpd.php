@@ -80,9 +80,14 @@ class Dhcpd
 	/**
 	* regenerates the dhcpd.conf file
 	* @param bool $display defaults to false, true to display file contents instead of write them
+    * @return bool indicates success
 	*/
 	public static function rebuildConf($display = false) {
 		$host = Vps::getHostInfo();
+        if (!is_array($host) || !isset($host['vlans'])) {
+            Vps::getLogger()->write('There appears to have been a problem with the host info, perhaps try again?'.PHP_EOL);
+            return false;
+        }
 		$file = 'authoritative;
 option domain-name "interserver.net";
 option domain-name-servers 1.1.1.1;
@@ -113,14 +118,20 @@ shared-network myvpn {
 			file_put_contents(self::getConfFile(), $file);
 		else
 			Vps::getLogger()->write('cat > '.self::getConfFile().' <<EOF'.PHP_EOL.$file.PHP_EOL.'EOF'.PHP_EOL);
+        return true;
 	}
 
 	/**
 	* regenerates the dhcpd.vps hosts file
 	* @param bool $display defaults to false, true to display file contents instead of write them
+    * @return bool indicates success
 	*/
 	public static function rebuildHosts($display = false) {
 		$host = Vps::getHostInfo();
+        if (!is_array($host) || !isset($host['vps'])) {
+            Vps::getLogger()->write('There appears to have been a problem with the host info, perhaps try again?'.PHP_EOL);
+            return false;
+        }
 		$lines = [];
 		foreach ($host['vps'] as $vps)
 			if ($vps['ip'] != 'none' && $vps['ip'] != '' && $vps['mac'] != '' && $vps['vzid'] != '0')
@@ -131,6 +142,7 @@ shared-network myvpn {
 			file_put_contents(self::getFile(), $file);
 		else
 			Vps::getLogger()->write('cat > '.self::getFile().' <<EOF'.PHP_EOL.$file.PHP_EOL.'EOF'.PHP_EOL);
+        return true;
 	}
 
 	/**

@@ -150,6 +150,7 @@ class Xinetd
 	*
 	* @param bool $dryRun true to disable actual removing or writing of files, default false to actually perform the rebuild
 	* @param bool $force true to force rebuilding all entries, default false to reuse unchanged entries
+    * @return bool indicates success
 	*/
 	public static function rebuild($dryRun = false, $force = false) {
 		Vps::getLogger()->write('Geting Host Info...');
@@ -157,7 +158,7 @@ class Xinetd
     	Vps::getLogger()->write('done'.PHP_EOL);
     	if (!is_array($host) || !isset($host['vps'])) {
 			Vps::getLogger()->write('There appears to have been a problem with the host info, perhaps try again?'.PHP_EOL);
-			return;
+			return false;
     	}
     	$usedVzids = [];
 		foreach ($host['vps'] as $vps) {
@@ -250,6 +251,7 @@ class Xinetd
 			if ($dryRun === false)
 				self::setup($type == 'vnc' ? $vzid : $vzid.'-'.$type, $port, isset($usedVzids[$vzid]) ? $usedVzids[$vzid] : false, $hostIp);
 		}
+        return true;
 	}
 
     /**
