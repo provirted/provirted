@@ -105,7 +105,7 @@ shared-network myvpn {
 			$file .= 'subnet '.$vlanData['network_ip'].' netmask '.$vlanData['netmask'].' {
 	next-server '.$vlanData['hostmin'].';
 	#range dynamic-bootp '.long2ip(ip2long($vlanData['hostmin']) + 1).' '.$vlanData['hostmax'].';
-	option domain-name-servers 64.20.34.50;
+	option domain-name-servers 69.10.54.252, 66.45.251.218;
 	option domain-name "interserver.net";
 	option routers '.long2ip(ip2long($vlanData['hostmin'])).';
 	option broadcast-address '.$vlanData['broadcast'].';
