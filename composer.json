@@ -20,7 +20,8 @@
 		}
 	],
 	"require": {
-		"corneltek/cliframework": "*"
+		"corneltek/cliframework": "dev-master",
+                "corneltek/codegen": "4.0.x-dev"
 	},
 	"require-dev": {
 		"smarty/smarty": "*",
