@@ -74,17 +74,45 @@ you can add -v to increase verbosity by 1 and see all the commands being run, or
 ## Developer Links
 
 * [KVMv2 Install](https://wiki.interserver.net/index.php/Kvmv2#latest_installer) KVMv2 Installer Code
-* [c9s/CLIFramework](https://github.com/c9s/CLIFramework) CLIFramework GitHub repo
-* [c9s/CLIFramework/wiki](https://github.com/c9s/CLIFramework/wiki) CLIFramework Wiki
 * [walkor/webman](https://github.com/walkor/webman) Webman GitHub repo
 * [workerman.net/doc/webman](https://www.workerman.net/doc/webman) Webman Docs
-* [thephpleague/climate](https://github.com/thephpleague/climate) PHP's best friend for the terminal.
-* [climate.thephpleague.com/](https://climate.thephpleague.com/) CLImate Docs
-* [kylekatarnls/simple-cli](https://github.com/kylekatarnls/simple-cli) A simple cli framework
-* [inhere/php-console](https://github.com/inhere/php-console) PHP CLI application library, provide console argument parse, console controller/command run, color style, user interactive, format information show and more.
-* [inhere/php-console/wiki](https://github.com/inhere/php-console/wiki) php-console Wiki
-* [jc21/clitable](https://github.com/jc21/clitable) Colored CLI Table Output for PHP
-* [php-school/cli-menu](https://github.com/php-school/cli-menu) Build beautiful PHP CLI menus. Simple yet Powerful. Expressive DSL.
+
+### CLI Frameworks
+* [adhocore/php-cli: PHP Console Application made easy- build great console apps with ease. Comes with Zero Dependency and Autocompletion support. Think of it as a PHP cli application framework.](https://github.com/adhocore/php-cli)
+* [alecrabbit/php-console-spinner: Colorful extremely flexible spinner for * [async] php cli applications](https://github.com/alecrabbit/php-console-spinner)
+* [aplus-framework/aplus: Aplus Command Line Tool](https://github.com/aplus-framework/aplus)
+* [auraphp/Aura.Cli: Command-Line Interface tools](https://github.com/auraphp/Aura.Cli)
+* [c9s/CLIFramework: A powerful command line application framework for PHP. It's an extensible, flexible component, You can build your command-based application in seconds!](https://github.com/c9s/CLIFramework)
+* [Cilex/Cilex: Cilex a lightweight framework for creating PHP CLI scripts inspired by Silex](https://github.com/Cilex/Cilex)
+* [clue/reactphp-stdio: Async, event-driven and UTF-8 aware console input & output (STDIN, STDOUT) for truly interactive CLI applications, built on top of ReactPHP.](https://github.com/clue/reactphp-stdio)
+* [contributte/console: :boom: Best minimal console (symfony/console) to Nette Framework (@nette)](https://github.com/contributte/console)
+* [curruwilla/console-pretty-log: Simple and customizable console log output for CLI apps.](https://github.com/curruwilla/console-pretty-log)
+* [decodelabs/terminus: Simple CLI interactions for PHP](https://github.com/decodelabs/terminus)
+* [DevAmirul/PHP-MVC-Framework: A simple, fast, and small PHP MVC Framework that enables to develop of modern applications with standard MVC structure and CLI command line tools. This framework uses dependencies as minimum as possible. Inspired by Laravel.](https://github.com/DevAmirul/PHP-MVC-Framework)
+* [inhere/php-console: 🖥 PHP CLI application library, provide console options, arguments parse, console controller/command run, color style, user interactive, format information show and more. A comprehensive PHP command line application library. Provides console options, parameter analysis, command execution, color style output, user information interaction, and special format information display](https://github.com/inhere/php-console)
+* [JBlond/php-cli: php command line / cli scritping and coloring classes](https://github.com/JBlond/php-cli)
+* [JBZoo/Cli: The framework helps create complex CLI apps and provides new tools for Symfony/Console, Symfony/Process.](https://github.com/JBZoo/Cli)
+* [jc21/clitable: CLI Table Output for PHP](https://github.com/jc21/clitable)
+* [kristuff/mishell: A mini PHP library to build beautiful CLI apps and reports](https://github.com/kristuff/mishell)
+* [kylekatarnls/simple-cli: A simple command line framework](https://github.com/kylekatarnls/simple-cli)
+* [meklis/console-client: SSH/Telnet clients with helpers](https://github.com/meklis/console-client)
+* [minicli/minicli: A minimalist framework for command-line applications in PHP](https://github.com/minicli/minicli)
+* [mix-php/mix: ☄️ PHP CLI mode development framework, supports Swoole, WorkerMan, FPM, CLI-Server / PHP 命令行模式开发框架，支持 Swoole、Swow、WorkerMan、FPM、CLI-Server](https://github.com/mix-php/mix)
+* [openai-php/client: ⚡️ OpenAI PHP is a supercharged community-maintained PHP API client that allows you to interact with OpenAI API.](https://github.com/openai-php/client)
+* [phppkg/cli-markdown: Render colored Markdown contents on console terminal](https://github.com/phppkg/cli-markdown)
+* [php-school/cli-menu: 🖥 Build beautiful PHP CLI menus. Simple yet Powerful. Expressive DSL.](https://github.com/php-school/cli-menu)
+* [php-toolkit/cli-utils: Provide some useful utils for the php CLI. console color, CLI env, CLI code highlighter.](https://github.com/php-toolkit/cli-utils)
+* [php-toolkit/pflag: Generic PHP command line flags parse library.](https://github.com/php-toolkit/pflag)
+* [php-tui/cli-parser: Type-safe CLI argument parser](https://github.com/php-tui/cli-parser)
+* [php-tui/php-tui: PHP TUI](https://github.com/php-tui/php-tui)
+* [splitbrain/php-cli: PHP library to build command line tools](https://github.com/splitbrain/php-cli)
+* [symfony/console: Eases the creation of beautiful and testable command line interfaces](https://github.com/symfony/console)
+* [theofidry/console: Library for creating CLI commands or applications](https://github.com/theofidry/console)
+* [thephpleague/climate: PHP's best friend for the terminal.](https://github.com/thephpleague/climate?tab=readme-ov-file)
+* [utopia-php/cli: Lite & fast micro PHP framework for building CLI tools that is **easy to learn**.](https://github.com/utopia-php/cli)
+* [vanilla/garden-cli: A full-featured, yet ridiculously simple commandline parser for your next php cli script. Stop fighting with getopt().](https://github.com/vanilla/garden-cli)
+* [WebFiori/cli: Class library to simplify the process of creating command line based applications using PHP.](https://github.com/WebFiori/cli)
+
 
 
 ## Dev Notes/Code
