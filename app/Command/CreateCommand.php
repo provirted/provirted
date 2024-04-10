@@ -90,6 +90,10 @@ HELP;
         $ipv6Range = array_key_exists('ipv6-range', $opts->keys) ? $opts->keys['ipv6-range']->value : false;
         $ioLimit = $useAll === false && array_key_exists('io-limit', $opts->keys) ? $opts->keys['io-limit']->value : false;
         $iopsLimit = $useAll === false && array_key_exists('iops-limit', $opts->keys) ? $opts->keys['iops-limit']->value : false;
+        if ($useAll == true && count(Vps::getAllVps()) > 0) {
+            Vps::getLogger()->error("There is already a VPS on this system so it cannot create one that uses all resources.");
+            return 1;
+        }
         if ($orderId == '')
             $orderId = str_replace(['qs', 'windows', 'linux', 'vps'], ['', '', '', ''], $vzid); // convert hostname to id
         if ($mac == '' && is_numeric($orderId))
