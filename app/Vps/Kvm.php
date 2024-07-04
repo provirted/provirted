@@ -416,15 +416,16 @@ class Kvm
 				Vps::getLogger()->info("Removing Downloaded Image");
 				Vps::getLogger()->write(Vps::runCommand("rm -f /vz/templates/{$template}.qcow2"));
 			}
-			Vps::getLogger()->write(Vps::runCommand("virsh detach-disk {$vzid} vda --persistent;"));
-			if (stripos($template, 'windows10') !== false) {
-				Vps::getLogger()->debug('Replacing VirtIO Device with SCSI Device for Windows 10');
+            Vps::getLogger()->write(Vps::runCommand("virsh detach-disk {$vzid} vda --persistent;"));
+            Vps::getLogger()->write(Vps::runCommand("virsh detach-disk {$vzid} sda --persistent;"));
+			//if (stripos($template, 'windows10') !== false) {
+				//Vps::getLogger()->debug('Replacing VirtIO Device with SCSI Device for Windows 10');
 				Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzid} /vz/{$vzid}/os.qcow2 sda --targetbus scsi --driver qemu --subdriver qcow2 --type disk --sourcetype file --persistent;"));
                 $dev = 'sda';
-			} else {
-				Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzid} /vz/{$vzid}/os.qcow2 vda --targetbus virtio --driver qemu --subdriver qcow2 --type disk --sourcetype file --persistent;"));
-                $dev = 'vda';
-			}
+			//} else {
+				//Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzid} /vz/{$vzid}/os.qcow2 vda --targetbus virtio --driver qemu --subdriver qcow2 --type disk --sourcetype file --persistent;"));
+                //$dev = 'vda';
+			//}
 			Vps::getLogger()->write(Vps::runCommand("virsh dumpxml {$vzid} > {$vzid}.xml"));
             Vps::getLogger()->write(Vps::runCommand("sed s#\"type='qcow2'/\"#\"type='qcow2' cache='writeback' discard='unmap'/\"#g -i {$vzid}.xml"));
 			Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml"));
