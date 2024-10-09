@@ -20,11 +20,11 @@
 		}
 	],
 	"require": {
+		"symfony/polyfill-php72": "1.30.0",
 		"corneltek/cliframework": "dev-master"
 	},
 	"require-dev": {
 		"smarty/smarty": "*",
-		"twig/twig": ">=2.0@stable",
 		"phpdocumentor/reflection": "*",
 		"phpdocumentor/reflection-docblock": "*"
 	},
