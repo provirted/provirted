@@ -19,7 +19,7 @@ class VpsInfoCommand extends Command {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
 		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-        $opts->add('j|json:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
+        $opts->add('j|json:', 'Display data in JSON format');
         $opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
 	}
 
