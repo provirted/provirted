@@ -19,6 +19,7 @@ class VpsInfoCommand extends Command {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
 		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
+        $opts->add('j|json:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
         $opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
 	}
 
@@ -31,6 +32,7 @@ class VpsInfoCommand extends Command {
         /** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
         $opts = $this->getOptions();
         $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
+        $dispJson = array_key_exists('json', $opts->keys) && $opts->keys['json']->value == 1;
 		$dir = Vps::$base;
         $module = $useAll === true ? 'quickservers' : 'vps';
         Vps::getLogger()->disableHistory();
@@ -280,7 +282,7 @@ class VpsInfoCommand extends Command {
 						$data = ['FILENAME' => basename($fileName, '.conf')];
 						foreach ($matches[0] as $idx => $line)
 							$data[$matches['field'][$idx]] = $matches['value'][$idx];
-						if (array_key_exists('IP_ADDRESS', $data)) {
+						if (array_key_exists('IP_ADDRESS', $data) && trim($data['IP_ADDRESS']) != '') {
 							foreach (['NAME', 'VEID', 'UUID', 'FILENAME'] as $field) {
 								if (array_key_exists($field, $data)) {
 									$ips[$data[$field]] = explode(' ', str_replace('/255.255.255.0', '', trim($data['IP_ADDRESS'])));
@@ -415,6 +417,12 @@ class VpsInfoCommand extends Command {
                     ];
                 }
             }
+        }
+        if ($dispJson) {
+            echo json_encode([
+                'servers' => $servers,
+                'ips' => $ips
+            ], JSON_PRETTY_PRINT)."\n";
         }
 		$cmd = 'curl --connect-timeout 60 --max-time 600 -k -F module='.$module.' -F action=server_list -F servers="'.base64_encode(gzcompress(serialize($servers), 9)).'"  '
 		. (isset($ips) ? ' -F ips="'.base64_encode(gzcompress(serialize($ips), 9)).'" ' : '')
