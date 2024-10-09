@@ -424,8 +424,8 @@ class VpsInfoCommand extends Command {
                 'ips' => $ips
             ], JSON_PRETTY_PRINT)."\n";
         }
-		$cmd = 'curl --connect-timeout 60 --max-time 600 -k -F module='.$module.' -F action=server_list -F servers="'.base64_encode(gzcompress(serialize($servers), 9)).'"  '
-		. (isset($ips) ? ' -F ips="'.base64_encode(gzcompress(serialize($ips), 9)).'" ' : '')
+		$cmd = 'curl --connect-timeout 60 --max-time 600 -k -F module='.$module.' -F action=server_list -F servers="'.base64_encode(gzcompress(json_encode($servers), 9)).'"  '
+		. (isset($ips) ? ' -F ips="'.base64_encode(gzcompress(json_encode($ips), 9)).'" ' : '')
 		. $curl_cmd.' "'.$url.'" 2>/dev/null; /bin/rm -f shot_*jpg shot_*jpg.gz 2>/dev/null;';
 		// echo $cmd.PHP_EOL;
 		echo trim(`$cmd`);
