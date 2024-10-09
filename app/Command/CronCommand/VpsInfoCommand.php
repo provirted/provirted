@@ -156,7 +156,7 @@ class VpsInfoCommand extends Command {
 				$lines = explode("\n", $lines);
 				foreach ($lines as $line) {
 					list($mainIp, $addonIp) = explode(':', $line);
-					if (array_key_exists($mainIp, $ipIds))
+					if (array_key_exists($mainIp, $ipIds) && $addonIp != $mainIp)
 						$ips[$ipIds[$mainIp]][] = $addonIp;
 				}
 			}
