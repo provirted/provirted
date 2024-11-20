@@ -19,6 +19,7 @@ class HostInfoCommand extends Command {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
 		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
+        $opts->add('j|json:', 'Display data in JSON format');
 		$opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
 	}
 
@@ -31,6 +32,7 @@ class HostInfoCommand extends Command {
 		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
 		$opts = $this->getOptions();
         $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
+        $dispJson = array_key_exists('json', $opts->keys) && $opts->keys['json']->value == 1;
 		$module = $useAll === true ? 'quickservers' : 'vps';
         Vps::getLogger()->disableHistory();
 		$dir = Vps::$base;
@@ -206,6 +208,9 @@ class HostInfoCommand extends Command {
 				mail('hardware@interserver.net', 'OpenVZ server does not appear to be booted properly', 'This server does not have /proc/user_beancounters, was it booted into the wrong kernel?', $headers);
 			}
 		}
+        if ($dispJson) {
+            echo json_encode($servers, JSON_PRETTY_PRINT)."\n";
+        }
 		$cmd = 'curl --connect-timeout 30 --max-time 60 -k -d module='.$module.' -d action=server_info -d servers="'.urlencode(base64_encode(json_encode($server))).'" "'.$url.'" 2>/dev/null;';
 		// echo "CMD: $cmd\n";
 		echo trim(`$cmd`);

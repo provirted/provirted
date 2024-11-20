@@ -38,9 +38,9 @@ class Console extends Application
             if (count($history) > 1) {
                 $history[0]['end'] = time();
                 @mkdir($_SERVER['HOME'].'/.provirted', 0750, true);
-                $allHistory = file_exists($_SERVER['HOME'].'/.provirted/history.json') ? json_decode(file_get_contents($_SERVER['HOME'].'/.provirted/history.json'), true) : [];
-                $allHistory[] = $history;
-                file_put_contents($_SERVER['HOME'].'/.provirted/history.json', json_encode($allHistory, JSON_PRETTY_PRINT));
+                $historyFilePath = $_SERVER['HOME'] . '/.provirted/history.json';
+                $historyLine = json_encode($history) . PHP_EOL;
+                file_put_contents($historyFilePath, $historyLine, FILE_APPEND);
             }
         }
     }

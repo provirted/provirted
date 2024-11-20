@@ -28,13 +28,26 @@ class ListCommand extends Command {
 
 	public function execute() {
 		Vps::init($this->getOptions(), []);
-        $allHistory = file_exists($_SERVER['HOME'].'/.provirted/history.json') ? json_decode(file_get_contents($_SERVER['HOME'].'/.provirted/history.json'), true) : [];
-        if (count($allHistory) == 0) {
-			echo 'No history has been logged yet'.PHP_EOL;
-			return;
+        $historyFilePath = $_SERVER['HOME'] . '/.provirted/history.json';
+
+        if (!file_exists($historyFilePath)) {
+            echo 'No history has been logged yet' . PHP_EOL;
+            return;
         }
-        foreach ($allHistory as $id => $data) {
-			echo "{$id}	{$data[0]['text']}\n";
+
+        $fileHandle = fopen($historyFilePath, 'r');
+        if ($fileHandle === false) {
+            echo 'Failed to open history file' . PHP_EOL;
+            return;
         }
-	}
+
+        $id = 0;
+        while (($line = fgets($fileHandle)) !== false) {
+            $data = json_decode(trim($line), true);
+            echo "{$id}\t{$data[0]['text']}\n";
+            $id++;
+        }
+
+        fclose($fileHandle);
+    }
 }
