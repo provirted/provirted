@@ -31,8 +31,8 @@ class BwInfoCommand extends Command {
 		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
 		$opts = $this->getOptions();
 		$useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
-		//$url = 'https://mynew.interserver.net/vps_queue.php';
-		$url = 'http://mynew.interserver.net:55151/queue.php';
+		//$url = 'https://my-web-2.interserver.net/vps_queue.php';
+		$url = 'http://my-web-2.interserver.net:55151/queue.php';
 		$ips = $this->get_vps_ipmap();
 		$totals = $this->get_vps_iptables_traffic($ips);
 		$module = $useAll === true ? 'quickservers' : 'vps';
