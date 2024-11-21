@@ -45,8 +45,8 @@ class HostInfoCommand extends Command {
 		//$hostname = trim(`hostname;`);
 		//mail('hardware@interserver.net', $root_used.'% Disk Usage on '.$hostname, $root_used.'% Disk Usage on '.$hostname);
 		//}
-		//$url = 'https://my-web-2.interserver.net/vps_queue.php';
-		$url = 'http://my-web-2.interserver.net:55151/queue.php';
+		//$url = 'https://my-web-3.interserver.net/vps_queue.php';
+		$url = 'http://my-web-3.interserver.net:55151/queue.php';
 		$server = array();
 		$uname = posix_uname();
 		$server['bits'] = $uname['machine'] == 'x86_64' ? 64 : 32;
