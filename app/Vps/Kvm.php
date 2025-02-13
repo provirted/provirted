@@ -68,8 +68,9 @@ class Kvm
 
 	public static function getVpsMac($vzid) {
         $response = self::getVps($vzid);
-        if (isset($response['domain']['devices']['interface']['mac_attr']['address'])) {
-		    $mac = self::getVps($vzid)['domain']['devices']['interface']['mac_attr']['address'];
+        $interface = isset($response['domain']['devices']['interface']['mac_attr']) ? $response['domain']['devices']['interface'] : $response['domain']['devices']['interface'][0];
+        if (isset($interface['mac_attr']['address'])) {
+		    $mac = self::$interface['mac_attr']['address'];
         } else {
             $mac = '';
         }
@@ -77,7 +78,9 @@ class Kvm
 	}
 
 	public static function getVpsIps($vzid) {
-		$params = self::getVps($vzid)['domain']['devices']['interface']['filterref'];
+        $response = self::getVps($vzid);
+        $interface = isset($response['domain']['devices']['interface']['mac_attr']) ? $response['domain']['devices']['interface'] : $response['domain']['devices']['interface'][0];
+		$params = $interface['filterref'];
 		$ips = [];
 		if (array_key_exists('parameter_attr', $params) && $params['parameter_attr']['name'] == 'IP') {
 			$ips[] = $params['parameter_attr']['value'];
