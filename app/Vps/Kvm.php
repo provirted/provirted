@@ -70,7 +70,7 @@ class Kvm
         $response = self::getVps($vzid);
         $interface = isset($response['domain']['devices']['interface']['mac_attr']) ? $response['domain']['devices']['interface'] : $response['domain']['devices']['interface'][0];
         if (isset($interface['mac_attr']['address'])) {
-		    $mac = self::$interface['mac_attr']['address'];
+		    $mac = $interface['mac_attr']['address'];
         } else {
             $mac = '';
         }
