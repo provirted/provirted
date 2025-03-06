@@ -182,7 +182,9 @@ class BwInfoCommand extends Command {
 						$macs[$shortMac] = $vnet;
 					}
 					$cmd = 'if [ -e /etc/dhcp/dhcpd.vps ]; then cat /etc/dhcp/dhcpd.vps; else cat /etc/dhcpd.vps; fi | grep ethernet | sed s#"^host *\([a-z0-9\.]*\) *{ *hardware *ethernet *\([^ ;]*\); *fixed-address *\([0-9\.]*\); *} *$"#"\2 \1 \3"#g';
-					$macvps = explode("\n", trim(`$cmd`));
+					$out = trim(`$cmd`);
+					if ($out != '') {
+					$macvps = explode("\n", $out);
 					$vpss = array();
 					foreach ($macvps as $line) {
 						list($mac, $vps, $ip) = explode(' ', $line);
@@ -208,6 +210,7 @@ class BwInfoCommand extends Command {
 					}
 					if (sizeof($totals) > 0) {
 						file_put_contents('/root/.traffic.last', json_encode($vpss));
+					}
 					}
 				}
 			}
