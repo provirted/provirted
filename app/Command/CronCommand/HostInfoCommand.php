@@ -209,7 +209,7 @@ class HostInfoCommand extends Command {
 			}
 		}
         if ($dispJson) {
-            echo json_encode($servers, JSON_PRETTY_PRINT)."\n";
+            echo json_encode($server, JSON_PRETTY_PRINT)."\n";
         }
 		$cmd = 'curl --connect-timeout 30 --max-time 60 -k -d module='.$module.' -d action=server_info -d servers="'.urlencode(base64_encode(json_encode($server))).'" "'.$url.'" 2>/dev/null;';
 		// echo "CMD: $cmd\n";
