@@ -163,6 +163,7 @@ class BwInfoCommand extends Command {
 		$vzctl = trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/bin:/usr/bin:/sbin:/usr/sbin"; which vzctl 2>/dev/null;`);
 		$totals = array();
 		if ($vzctl == '') {
+            self::getLogger()->debug("Using kvm net devs\n");
 			if (file_exists('/root/.traffic.last')) {
 				$last = json_decode(file_get_contents('/root/.traffic.last'), true);
 				if (is_null($last) || $last === false)
@@ -224,6 +225,7 @@ class BwInfoCommand extends Command {
 			}
 		} elseif (file_exists('/usr/bin/prlctl')) {
 			global $vpsName2Veid, $vpsVeid2Name;
+            self::getLogger()->debug("Found prctl\n");
 			if (file_exists('/root/.traffic.last')) {
 				$last = json_decode(file_get_contents('/root/.traffic.last'), true);
 				if (is_null($last) || $last === false)
@@ -280,6 +282,7 @@ class BwInfoCommand extends Command {
 				file_put_contents('/root/.traffic.last', json_encode($vpss));
 			}
 		} else {
+            self::getLogger()->debug("Using iptables forwards\n");
 			foreach ($ips as $ip => $id) {
 				if ($this->validIp($ip, false) == true) {
 					$lines = explode("\n", trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/bin:/usr/bin:/sbin:/usr/sbin"; iptables -nvx -L FORWARD 2>/dev/null | grep -v DROP  | awk '{ print " " $7 " " $8 " " $2 }' | grep -vi "[a-z]" | sort -n | grep " $ip " | awk '{ print \$3 }'`));
