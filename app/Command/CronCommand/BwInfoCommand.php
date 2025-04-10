@@ -91,9 +91,12 @@ class BwInfoCommand extends Command {
 				if (preg_match('/^IP_ADDRESS="([^"]*)"$/mU', $txt, $matches)) {
 					$ip = str_replace('/255.255.255.0','', $matches[1]);
 					$veid = basename($file, '.conf');
-					if (preg_match('/^VEID="([^"]*)"$/mU', $txt, $matches2)) {
-						$veid = $matches2[1];
-					}
+                    if (preg_match('/^VEID="([^"]*)"$/mU', $txt, $matches2)) {
+                        $veid = $matches2[1];
+                    }
+                    if (preg_match('/^UUID="([^"]*)"$/mU', $txt, $matches2)) {
+                        $veid = $matches2[1];
+                    }
 					if (preg_match('/^NAME="([^"]*)"$/mU', $txt, $matches2)) {
 						$vpsName2Veid[$matches2[1]] = $veid;
 						$vpsVeid2Name[$veid] = $matches2[1];
