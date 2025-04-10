@@ -19,6 +19,7 @@ class BwInfoCommand extends Command {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
 		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
+        $opts->add('j|json:', 'Display data in JSON format');
 		$opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
 	}
 
@@ -31,11 +32,18 @@ class BwInfoCommand extends Command {
 		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
 		$opts = $this->getOptions();
 		$useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
+        $dispJson = array_key_exists('json', $opts->keys) && $opts->keys['json']->value == 1;
 		//$url = 'https://my-web-3.interserver.net/vps_queue.php';
 		$url = 'http://my-web-3.interserver.net:55151/queue.php';
 		$ips = $this->get_vps_ipmap();
 		$totals = $this->get_vps_iptables_traffic($ips);
 		$module = $useAll === true ? 'quickservers' : 'vps';
+        if ($dispJson) {
+            echo "IPs: ";
+            echo json_encode($ips, JSON_PRETTY_PRINT)."\n";
+            echo "Totals: ";
+            echo json_encode($totals, JSON_PRETTY_PRINT)."\n";
+        }
 		if (sizeof($totals) > 0) {
 			//print_r($ips);print_r($totals);
 			$cmd = 'curl --connect-timeout 30 --max-time 60 -k -d module='.$module.' -d action=bandwidth -d servers="'.urlencode(base64_encode(gzcompress(json_encode($ips)))).'" -d bandwidth="'.urlencode(base64_encode(gzcompress(json_encode($totals)))).'" "'.$url.'" 2>/dev/null;';
