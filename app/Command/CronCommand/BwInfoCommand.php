@@ -163,7 +163,7 @@ class BwInfoCommand extends Command {
 		$vzctl = trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/bin:/usr/bin:/sbin:/usr/sbin"; which vzctl 2>/dev/null;`);
 		$totals = array();
 		if ($vzctl == '') {
-            self::getLogger()->debug("Using kvm net devs\n");
+            self::getLogger()->info("Using kvm net devs\n");
 			if (file_exists('/root/.traffic.last')) {
 				$last = json_decode(file_get_contents('/root/.traffic.last'), true);
 				if (is_null($last) || $last === false)
@@ -225,7 +225,7 @@ class BwInfoCommand extends Command {
 			}
 		} elseif (file_exists('/usr/bin/prlctl')) {
 			global $vpsName2Veid, $vpsVeid2Name;
-            self::getLogger()->debug("Found prctl\n");
+            self::getLogger()->info("Found prctl\n");
 			if (file_exists('/root/.traffic.last')) {
 				$last = json_decode(file_get_contents('/root/.traffic.last'), true);
 				if (is_null($last) || $last === false)
@@ -237,13 +237,13 @@ class BwInfoCommand extends Command {
 				if ($uuid != '0') {
 					$in = intval($matches['in_bytes'][$idx]);
 					$out = intval($matches['out_bytes'][$idx]);
-                    self::getLogger()->debug("UID {$uuid} In {$in} Out {$out}\n");
+                    self::getLogger()->info("UID {$uuid} In {$in} Out {$out}\n");
                     if ($in == 0 && $out == 0)
                         continue;
 					if ((false !== $ip = array_search($uuid, $ips))
 					|| (array_key_exists($uuid, $vpsName2Veid) && false !== $ip = array_search($vpsName2Veid[$uuid], $ips))
 					|| (array_key_exists($uuid, $vpsVeid2Name) && false !== $ip = array_search($vpsVeid2Name[$uuid], $ips))) {
-                        self::getLogger()->debug("Got IP {$ip}\n");
+                        self::getLogger()->info("Got IP {$ip}\n");
 						if (isset($last[$ip]))
 							list($in_last, $out_last) = $last[$ip];
 						else
@@ -282,7 +282,7 @@ class BwInfoCommand extends Command {
 				file_put_contents('/root/.traffic.last', json_encode($vpss));
 			}
 		} else {
-            self::getLogger()->debug("Using iptables forwards\n");
+            self::getLogger()->info("Using iptables forwards\n");
 			foreach ($ips as $ip => $id) {
 				if ($this->validIp($ip, false) == true) {
 					$lines = explode("\n", trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/bin:/usr/bin:/sbin:/usr/sbin"; iptables -nvx -L FORWARD 2>/dev/null | grep -v DROP  | awk '{ print " " $7 " " $8 " " $2 }' | grep -vi "[a-z]" | sort -n | grep " $ip " | awk '{ print \$3 }'`));
