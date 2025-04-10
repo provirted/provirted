@@ -39,6 +39,9 @@ class BwInfoCommand extends Command {
 		$totals = $this->get_vps_iptables_traffic($ips);
 		$module = $useAll === true ? 'quickservers' : 'vps';
         if ($dispJson) {
+            global $vpsName2Veid, $vpsVeid2Name;
+            echo "vpsName2Veid: ".json_encode($vpsName2Veid, JSON_PRETTY_PRINT)."\n";
+            echo "vpsVeid2Name: ".json_encode($vpsVeid2Name, JSON_PRETTY_PRINT)."\n";
             echo "IPs: ";
             echo json_encode($ips, JSON_PRETTY_PRINT)."\n";
             echo "Totals: ";
@@ -83,7 +86,7 @@ class BwInfoCommand extends Command {
 			$output = trim(`export PATH="/usr/local/bin:/usr/local/sbin:\$PATH:/bin:/usr/bin:/sbin:/usr/sbin"; if [ -e /etc/dhcp/dhcpd.vps ]; then DHCPVPS=/etc/dhcp/dhcpd.vps; else DHCPVPS=/etc/dhcpd.vps; fi;  if [ -e \$DHCPVPS ]; then grep "^host" \$DHCPVPS | tr \; " " | awk '{ print $2 " " $8 }'; fi;`);
 		} elseif (file_exists('/usr/bin/prlctl')) {
 			$output = '';
-			foreach (glob('/etc/vz/conf/*.conf') as $file) {
+			foreach (array_merge(glob('/etc/vz/conf/*.conf') ,glob('/vz/private/*/ve.conf')) as $file) {
 				$txt = file_get_contents($file);
 				if (preg_match('/^IP_ADDRESS="([^"]*)"$/mU', $txt, $matches)) {
 					$ip = str_replace('/255.255.255.0','', $matches[1]);
