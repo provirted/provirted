@@ -235,11 +235,13 @@ class BwInfoCommand extends Command {
 				if ($uuid != '0') {
 					$in = intval($matches['in_bytes'][$idx]);
 					$out = intval($matches['out_bytes'][$idx]);
+                    self::getLogger()->debug("UID {$uuid} In {$in} Out {$out}\n");
                     if ($in == 0 && $out == 0)
                         continue;
 					if ((false !== $ip = array_search($uuid, $ips))
 					|| (array_key_exists($uuid, $vpsName2Veid) && false !== $ip = array_search($vpsName2Veid[$uuid], $ips))
 					|| (array_key_exists($uuid, $vpsVeid2Name) && false !== $ip = array_search($vpsVeid2Name[$uuid], $ips))) {
+                        self::getLogger()->debug("Got IP {$ip}\n");
 						if (isset($last[$ip]))
 							list($in_last, $out_last) = $last[$ip];
 						else
