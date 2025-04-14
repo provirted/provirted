@@ -216,7 +216,7 @@ class Vps
 	}
 
 	public static function getUrl() {
-		return 'https://mynew.interserver.net/queue.php';
+		return 'https://myvps.interserver.net/queue.php';
 	}
 
 	/**
