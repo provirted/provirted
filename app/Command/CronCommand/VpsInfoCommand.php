@@ -36,7 +36,7 @@ class VpsInfoCommand extends Command {
 		$dir = Vps::$base;
         $module = $useAll === true ? 'quickservers' : 'vps';
         Vps::getLogger()->disableHistory();
-        $url = 'https://my-web-3.interserver.net/'.($module == 'quickservers' ? 'qs' : 'vps').'_queue.php';
+        $url = 'https://myvps.interserver.net/'.($module == 'quickservers' ? 'qs' : 'vps').'_queue.php';
 		$curl_cmd = '';
 		$servers = array();
 		$ips = array();

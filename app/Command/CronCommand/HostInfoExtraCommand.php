@@ -56,7 +56,7 @@ class HostInfoExtraCommand extends Command {
 			unset($flagsnew);
 			$servers['cpu_flags'] = $flags;
 		}
-		$url = 'https://my-web-3.interserver.net/vps_queue.php';
+		$url = 'https://myvps.interserver.net/vps_queue.php';
 		$cmd = 'curl --connect-timeout 60 --max-time 600 -k -d action=server_info_extra -d servers="'.urlencode(base64_encode(serialize($servers))).'" "'.$url.'" 2>/dev/null;';
 		// echo "CMD: $cmd\n";
 		echo trim(`$cmd`);

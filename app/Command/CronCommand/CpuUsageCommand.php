@@ -78,6 +78,6 @@ class CpuUsageCommand extends Command {
 		}
 		file_put_contents($usageFile, json_encode($usage));
 		$cpu_usage = json_encode($cpu);
-		echo `curl --connect-timeout 60 --max-time 600 -k -F action=cpu_usage -F "cpu_usage={$cpu_usage}" "http://my-web-3.interserver.net:55151/queue.php" 2>/dev/null`;
+		echo `curl --connect-timeout 60 --max-time 600 -k -F action=cpu_usage -F "cpu_usage={$cpu_usage}" "http://myvps.interserver.net:55151/queue.php" 2>/dev/null`;
 	}
 }

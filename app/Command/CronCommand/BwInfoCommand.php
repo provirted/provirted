@@ -33,8 +33,8 @@ class BwInfoCommand extends Command {
 		$opts = $this->getOptions();
 		$useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
         $dispJson = array_key_exists('json', $opts->keys) && $opts->keys['json']->value == 1;
-		//$url = 'https://my-web-3.interserver.net/vps_queue.php';
-		$url = 'http://my-web-3.interserver.net:55151/queue.php';
+		//$url = 'https://myvps.interserver.net/vps_queue.php';
+		$url = 'http://myvps.interserver.net:55151/queue.php';
 		$ips = $this->get_vps_ipmap();
 		$totals = $this->get_vps_iptables_traffic($ips);
 		$module = $useAll === true ? 'quickservers' : 'vps';
