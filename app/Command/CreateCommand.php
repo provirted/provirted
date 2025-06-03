@@ -111,7 +111,6 @@ HELP;
         $ipv6Range = array_key_exists('ipv6-range', $opts->keys) ? $opts->keys['ipv6-range']->value : false;
         $ioLimit = $useAll === false && array_key_exists('io-limit', $opts->keys) ? $opts->keys['io-limit']->value : false;
         $iopsLimit = $useAll === false && array_key_exists('iops-limit', $opts->keys) ? $opts->keys['iops-limit']->value : false;
-        Vps::getLogger()->writeln("password = ".var_export($password,true).";\n");
         if (!empty($ip) && !$this->validIp($ip,true)) {
             Vps::getLogger()->error("Invalid IP Address '{$ip}'.");
             return 1;
