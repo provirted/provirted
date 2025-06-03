@@ -65,6 +65,27 @@ HELP;
         $args->add('password')->desc('Root/Administrator password')->optional()->isa('string');
     }
 
+
+    public function validIp($ip, $support_ipv6 = false)
+    {
+        if (version_compare(PHP_VERSION, '5.2.0') >= 0) {
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false)
+                if ($support_ipv6 === false || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false)
+                    return false;
+        } else {
+            if (!preg_match("/^[0-9\.]{7,15}$/", $ip))
+                return false;
+            $quads = explode('.', $ip);
+            $numquads = count($quads);
+            if ($numquads != 4)
+                return false;
+            for ($i = 0; $i < 4; $i++)
+                if ($quads[$i] > 255)
+                    return false;
+        }
+        return true;
+    }
+
     public function execute($vzid, $hostname, $ip, $template, $hd = 25, $ram = 1024, $cpu = 1, $password = '') {
         Vps::init($this->getOptions(), ['vzid' => $vzid, 'hostname' => $hostname, 'ip' => $ip, 'template' => $template, 'hd' => $hd, 'ram' => $ram, 'cpu' => $cpu, 'password' => $password]);
         if (!Vps::isVirtualHost()) {
@@ -90,6 +111,11 @@ HELP;
         $ipv6Range = array_key_exists('ipv6-range', $opts->keys) ? $opts->keys['ipv6-range']->value : false;
         $ioLimit = $useAll === false && array_key_exists('io-limit', $opts->keys) ? $opts->keys['io-limit']->value : false;
         $iopsLimit = $useAll === false && array_key_exists('iops-limit', $opts->keys) ? $opts->keys['iops-limit']->value : false;
+        Vps::getLogger()->writeln("password = ".var_export($password,true).";\n");
+        if (!empty($ip) && !$this->validIp($ip,true)) {
+            Vps::getLogger()->error("Invalid IP Address '{$ip}'.");
+            return 1;
+        }
         if ($useAll == true && trim(`virsh list --all|grep qs`) != '') {
             Vps::getLogger()->error("There is already a VPS on this system so it cannot create one that uses all resources.");
             return 1;
