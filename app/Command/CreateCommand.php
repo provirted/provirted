@@ -46,6 +46,7 @@ HELP;
         $opts->add('c|client-ip:', 'Client IP')->isa('string');
         $opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
         $opts->add('p|password:', 'Password')->isa('string');
+        $opts->add('ssh-key:', 'Optional SSH Keys to add')->isa('string');
         $opts->add('io-limit:', 'The IO Limit in bytes/s')->isa('number');
         $opts->add('iops-limit:', 'The IO Limit in iops')->isa('number');
         $opts->add('ipv6-ip:', 'The IPv6 IP Address if one is to be set')->isa('string');
@@ -107,6 +108,7 @@ HELP;
         $clientIp = array_key_exists('client-ip', $opts->keys) ? $opts->keys['client-ip']->value : '';
         $orderId = array_key_exists('order-id', $opts->keys) ? $opts->keys['order-id']->value : '';
         $mac = array_key_exists('mac', $opts->keys) ? $opts->keys['mac']->value : '';
+        $sshKey = array_key_exists('ssh-key', $opts->keys) ? $opts->keys['ssh-key']->value : false;
         $ipv6Ip = array_key_exists('ipv6-ip', $opts->keys) ? $opts->keys['ipv6-ip']->value : false;
         $ipv6Range = array_key_exists('ipv6-range', $opts->keys) ? $opts->keys['ipv6-range']->value : false;
         $ioLimit = $useAll === false && array_key_exists('io-limit', $opts->keys) ? $opts->keys['io-limit']->value : false;
@@ -170,7 +172,12 @@ HELP;
             if (Vps::getVirtType() == 'kvm') {
                 $password = escapeshellarg($password);
                 $hostname = escapeshellarg($hostname);
-                Vps::getLogger()->write(Vps::runCommand("virt-customize -d {$vzid} --root-password password:{$password} --hostname {$hostname};"));
+                $cmd = "virt-customize -d {$vzid} --root-password password:{$password} --hostname {$hostname}";
+                if ($sshKey != false) {
+                    $sshKey = escapeshellarg($sshKey);
+                    $cmd .= " --ssh-inject root:string:{$sshKey}";
+
+                Vps::getLogger()->write(Vps::runCommand("{$cmd};"));
             }
         }
         if ($error == 0) {
