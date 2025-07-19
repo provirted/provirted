@@ -176,7 +176,7 @@ HELP;
                 if ($sshKey != false) {
                     $sshKey = escapeshellarg($sshKey);
                     $cmd .= " --ssh-inject root:string:{$sshKey}";
-
+                }
                 Vps::getLogger()->write(Vps::runCommand("{$cmd};"));
             }
         }
