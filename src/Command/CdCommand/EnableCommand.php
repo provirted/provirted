@@ -2,53 +2,57 @@
 namespace App\Command\CdCommand;
 
 use App\Vps;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
 
-class EnableCommand extends Command {
-	public function brief() {
-		return "Enable the CD-ROM and optionally Insert a CD in a Virtual Machine.";
-	}
+class EnableCommand extends BaseCdCommand
+{
+    protected static $defaultName = 'cd:enable';
 
-    /** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-	}
+    protected function configure()
+    {
+        $this
+            ->setDescription('Enable the CD-ROM and optionally insert a CD in a Virtual Machine.')
+            ->addArgument('vzid', InputArgument::REQUIRED)
+            ->addArgument('url', InputArgument::OPTIONAL);
 
-    /** @param \CLIFramework\ArgInfoList $args */
-	public function arguments($args) {
-		$args->add('vzid')->desc('VPS id/name to use')->isa('string')->validValues([Vps::class, 'getAllVpsAllVirts']);
-		$args->add('url')->desc('CD image URL')->isa('string');
-	}
+        $this->configureBaseOptions();
+    }
 
-	public function execute($vzid, $url = '') {
-		Vps::init($this->getOptions(), ['vzid' => $vzid, 'url' => $url]);
-		if (!Vps::isVirtualHost()) {
-			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
-			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
-			return 1;
-		}
-		if (!Vps::vpsExists($vzid)) {
-			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
-			return 1;
-		}
-		if (trim(Vps::runCommand("virsh dumpxml {$vzid}|grep \"disk.*cdrom\"")) != "") {
-			Vps::getLogger()->error("Skipping Setup, CD-ROM Drive already exists in VPS configuration");
-		} else {
-			if ($url == '') {
-				Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzid} - hda --targetbus ide --type cdrom --sourcetype file --config"));
-				Vps::getLogger()->write(Vps::runCommand("virsh change-media {$vzid} hda --eject --config"));
-			} else {
-				Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzid} \"{$url}\" hda --targetbus ide --type cdrom --sourcetype file --config"));
-			}
-			Vps::restartVps($vzid);
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        [$io, $logger] = $this->bootstrap($input, $output, [
+            'vzid' => $input->getArgument('vzid'),
+            'url'  => $input->getArgument('url') ?: ''
+        ]);
 
-		}
-	}
+        $vzid = $input->getArgument('vzid');
+        $url  = $input->getArgument('url') ?: '';
 
+        if (!$this->ensureVpsValid($io, $vzid)) {
+            return Command::FAILURE;
+        }
+
+        $exists = trim(Vps::runCommand("virsh dumpxml {$vzid}|grep \"disk.*cdrom\""));
+
+        if ($exists !== "") {
+            $io->warning("CD-ROM already exists in VPS configuration.");
+            return Command::SUCCESS;
+        }
+
+        if ($url === '') {
+            $logger->write(Vps::runCommand("virsh attach-disk $vzid - hda --targetbus ide --type cdrom --sourcetype file --config"));
+            $logger->write(Vps::runCommand("virsh change-media $vzid hda --eject --config"));
+        } else {
+            $logger->write(Vps::runCommand("virsh attach-disk $vzid \"$url\" hda --targetbus ide --type cdrom --sourcetype file --config"));
+        }
+
+        Vps::restartVps($vzid);
+
+        $io->success("CD-ROM enabled for VPS '{$vzid}'.");
+
+        return Command::SUCCESS;
+    }
 }
