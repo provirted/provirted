@@ -1,5 +1,14 @@
 #!/usr/bin/env php
 <?php
-require 'vendor/autoload.php'; // Only if autoload is not set up already.
-$app = new \App\Console;
-$app->runWithTry($argv); // $argv is a global variable containing command line arguments.
+
+require __DIR__ . '/vendor/autoload.php';
+
+use App\Console;
+use Symfony\Component\Console\Input\ArgvInput;
+use Symfony\Component\Console\Output\ConsoleOutput;
+
+$input = new ArgvInput();
+$output = new ConsoleOutput();
+
+$app = new Console();
+$app->run($input, $output);
