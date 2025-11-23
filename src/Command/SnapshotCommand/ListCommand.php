@@ -1,70 +1,77 @@
 <?php
-namespace App\Command\SnapshotCommand;
+namespace App\Command\Snapshot;
 
 use App\Vps;
-use App\Os\Xinetd;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Component\Table\Table;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
 
-class ListCommand extends Command {
-	public function brief() {
-		return "displays a listing of the zfs snapshots";
-	}
+class ListCommand extends Command
+{
+    protected static $defaultName = 'snapshot:list';
 
-    /** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-		$opts->add('d|dry', 'perms a dry run, no files removed or written only messages saying they would have been');
-	}
+    protected function configure()
+    {
+        $this
+            ->setDescription('Displays a listing of the ZFS snapshots')
+            ->addArgument('vzid', InputArgument::OPTIONAL, 'Filter snapshots by VPS ID')
+            ->addOption('verbose-level', 'v', InputOption::VALUE_NONE)
+            ->addOption('virt', 't', InputOption::VALUE_REQUIRED)
+            ->addOption('dry', 'd', InputOption::VALUE_NONE, 'Dry run — no changes made');
+    }
 
-    /** @param \CLIFramework\ArgInfoList $args */
-	public function arguments($args) {
-	}
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        $vzid   = $input->getArgument('vzid');
+        $dryRun = (bool)$input->getOption('dry');
 
-	public function execute() {
-		Vps::init($this->getOptions(), []);
-		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
-		$opts = $this->getOptions();
-		$dryRun = array_key_exists('dry', $opts->keys) && $opts->keys['dry']->value == 1;
+        Vps::init($input->getOptions(), ['vzid' => $vzid]);
+
+        if (!Vps::isVirtualHost()) {
+            Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
+            return Command::FAILURE;
+        }
+        if (Vps::getPoolType() !== 'zfs') {
+            Vps::getLogger()->error("This system is not setup for ZFS");
+            return Command::FAILURE;
+        }
+
         $suffixes = [
             'B' => 1,
             'K' => 1024,
-            'M' => 1024*1024,
-            'G' => 1024*1024*1024,
-            'T' => 1024*1024*1024*1024,
+            'M' => 1024 * 1024,
+            'G' => 1024 * 1024 * 1024,
+            'T' => 1024 * 1024 * 1024 * 1024,
         ];
-        if (!Vps::isVirtualHost()) {
-            Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
-            Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
-            return 1;
-        }
-        if (Vps::getPoolType() != 'zfs') {
-            Vps::getLogger()->error("This system is not setup for zfs");
-            return 1;
-        }
-        if (preg_match_all('/^vz\/(?P<vps>[^@]+)@(?P<name>\S+)\s+(?P<used>[\d\.]+)(?P<suffix>[BKMGT])\s+(?P<date>\S+\s+\S+\s+\S+\s+\S+\s+\S+)$/muU', `zfs list -t snapshot -o name,used,creation`, $matches)) {
-            $table = new Table;
-            $table->setHeaders(['VPS', 'Snapshot Name', 'Size', 'Created']);
-            $servers = [];
-            foreach ($matches['vps'] as $idx => $vps) {
-                if (!isset($servers[$vps]))
-                    $servers[$vps] = [];
+
+        $raw = shell_exec('zfs list -t snapshot -o name,used,creation');
+        $pattern = '/^vz\/(?P<vps>[^@]+)@(?P<name>\S+)\s+(?P<used>[\d\.]+)(?P<suffix>[BKMGT])\s+(?P<date>.+)$/mu';
+
+        if (preg_match_all($pattern, $raw, $matches)) {
+
+            $output->writeln(str_pad("VPS", 20) . str_pad("Snapshot", 20) . str_pad("Size", 15) . "Created");
+
+            foreach ($matches['vps'] as $idx => $vpsName) {
+
+                if ($vzid && $vzid !== $vpsName) {
+                    continue;
+                }
+
                 $name = $matches['name'][$idx];
                 $size = ceil(floatval($matches['used'][$idx]) * $suffixes[$matches['suffix'][$idx]]);
                 $date = date('Y-m-d H:i:s', strtotime($matches['date'][$idx]));
-                $servers[$vps][$name] = [
-                    'size' => $size,
-                    'date' => $date
-                ];
-                $table->addRow([$vps, $name, $size, $date]);
+
+                $output->writeln(
+                    str_pad($vpsName, 20) .
+                    str_pad($name, 20) .
+                    str_pad($size, 15) .
+                    $date
+                );
             }
-            echo $table->render();
         }
-	}
+
+        return Command::SUCCESS;
+    }
 }

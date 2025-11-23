@@ -1,33 +1,41 @@
 <?php
 namespace App\Command;
 
-use CLIFramework\Command;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
 
-class VncCommand extends Command {
-	public function brief() {
-		return "Prepairs and works with a source based version of the project (instead of the phar)";
-	}
+class VncCommand extends Command
+{
+    protected static $defaultName = 'vnc';
 
-	public function execute() {
-        echo '
+    protected function configure()
+    {
+        $this->setDescription("Displays help for VNC-related subcommands");
+    }
+
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        $output->writeln('
 SYNTAX
 
-provirted.phar vnc <subcommand>
+  provirted vnc <subcommand>
 
 SUBCOMMANDS
-	secure [--dry]            removes old and bad entries to maintain security
-	setup <vzid> [ip]         create a new mapping
-	remove <vzid>             remove a mapping
-	restart                   restart the xinetd service
-	rebuild [--dry]           removes old and bad entries to maintain security, and recreates all port mappings
+  vnc:secure [--dry]            Remove old and bad entries to maintain security
+  vnc:setup <vzid> [ip]         Create a new mapping
+  vnc:remove <vzid>             Remove a mapping
+  vnc:restart                   Restart the xinetd service
+  vnc:rebuild [--dry]           Clean and recreate all mappings
 
 EXAMPLES
-	provirted.phar vnc setup vps4000 8.8.8.8
-	provirted.phar vnc remove vps4000
-	provirted.phar vnc secure
-	provirted.phar vnc restart
-	provirted.phar vnc rebuild --dry
-	provirted.phar vnc rebuild
-';
-	}
+  provirted vnc:setup vps4000 8.8.8.8
+  provirted vnc:remove vps4000
+  provirted vnc:secure
+  provirted vnc:restart
+  provirted vnc:rebuild --dry
+  provirted vnc:rebuild
+');
+        return Command::SUCCESS;
+    }
 }

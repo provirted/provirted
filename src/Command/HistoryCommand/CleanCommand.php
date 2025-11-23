@@ -1,54 +1,45 @@
 <?php
-namespace App\Command\HistoryCommand;
+namespace App\Command\History;
 
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use App\Vps;
-use App\Os\Xinetd;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
 
-class CleanCommand extends Command {
-	public function brief() {
-		return "cleans up the history log removing certain entries";
-	}
+class ListCommand extends Command
+{
+    protected static $defaultName = 'history:list';
 
-    /** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-	}
+    protected function configure()
+    {
+        $this
+            ->setDescription('Lists the history entries')
+            ->addOption('verbose', 'v', InputOption::VALUE_NONE, 'Increase verbosity')
+            ->addOption('virt', 't', InputOption::VALUE_REQUIRED, 'Virtualization type');
+    }
 
-    /** @param \CLIFramework\ArgInfoList $args */
-	public function arguments($args) {
-	}
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        Vps::init($input->getOptions(), []);
 
-	public function execute() {
-		Vps::init($this->getOptions(), []);
-        $allHistory = file_exists($_SERVER['HOME'].'/.provirted/history.json') ? json_decode(file_get_contents($_SERVER['HOME'].'/.provirted/history.json'), true) : [];
-        $newHistory = [];
-        $badLines = [
-            '/root/cpaneldirect/provirted.phar vnc rebuild',
-            '/root/cpaneldirect/provirted.phar cron host-info',        
-        ];
-        if (count($allHistory) == 0) {
-			echo 'No history has been logged yet'.PHP_EOL;
-			return;                         
+        $file = $_SERVER['HOME'] . '/.provirted/history.json';
+
+        if (!file_exists($file)) {
+            $output->writeln('No history has been logged yet');
+            return Command::SUCCESS;
         }
-        $updates = 0;
-        foreach ($allHistory as $id => $data) {
-            if (!in_array($data[0]['text'], $badLines))
-                $newHistory[] = $data;
-            else
-                $updates++;
+
+        $history = json_decode(file_get_contents($file), true);
+        if (!is_array($history)) {
+            $output->writeln('History file invalid');
+            return Command::FAILURE;
         }
-        if ($updates == 0) {
-            echo 'No updates / changes to be made'.PHP_EOL;
-            return;
+
+        foreach ($history as $id => $entry) {
+            $output->writeln("{$id}\t{$entry[0]['text']}");
         }
-        echo 'Dropped '.$updates.' History Entries'.PHP_EOL;
-        file_put_contents($_SERVER['HOME'].'/.provirted/history.json', json_encode($newHistory, JSON_PRETTY_PRINT));
-	}
+
+        return Command::SUCCESS;
+    }
 }

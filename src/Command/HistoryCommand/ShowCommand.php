@@ -1,81 +1,80 @@
 <?php
-namespace App\Command\HistoryCommand;
+namespace App\Command\History;
 
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
 use App\Vps;
-use App\Os\Xinetd;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
 
-class ShowCommand extends Command {
-	public function brief() {
-		return "displays one of the history entries, -1 is the always the latest entry";
-	}
+class ShowCommand extends Command
+{
+    protected static $defaultName = 'history:show';
 
-    /** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-	}
+    protected function configure()
+    {
+        $this
+            ->setDescription('Displays one of the history entries')
+            ->addArgument('id', InputArgument::REQUIRED, 'History id or "last"');
+    }
 
-    /** @param \CLIFramework\ArgInfoList $args */
-	public function arguments($args) {
-		$args->add('id')->desc('History id to use or "last" for the latest entry')->isa('string')->validValues([Vps::class, 'getHistoryChoices']);
-	}
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $id = $input->getArgument('id');
+        Vps::init($input->getOptions(), ['id' => $id]);
 
-	public function execute($id) {
-		Vps::init($this->getOptions(), ['id' => $id]);
-        $historyFilePath = $_SERVER['HOME'] . '/.provirted/history.json';
+        $file = $_SERVER['HOME'] . '/.provirted/history.json';
 
-        if (!file_exists($historyFilePath)) {
-            echo 'No history has been logged yet' . PHP_EOL;
-            return;
+        if (!file_exists($file)) {
+            $output->writeln('No history has been logged yet');
+            return Command::SUCCESS;
         }
 
-        $fileHandle = fopen($historyFilePath, 'r');
-        if ($fileHandle === false) {
-            echo 'Failed to open history file' . PHP_EOL;
-            return;
+        $history = json_decode(file_get_contents($file), true);
+
+        if ($id === 'last' || $id === '-1') {
+            $id = count($history) - 1;
         }
 
-        $id = isset($id) ? $id : 'last';
-        $currentId = 0;
+        if (!isset($history[$id])) {
+            $output->writeln('Invalid ID');
+            return Command::FAILURE;
+        }
 
-        while (($line = fgets($fileHandle)) !== false) {
-            if ($id === 'last' || $currentId == $id) {
-                $data = json_decode(trim($line), true);
-                $lastType = '';
-                foreach ($data as $idx => $line) {
-                    if ($line['type'] == 'program') {
-                        echo "[Command Line] {$line['text']}\n";
-                        echo "[Started at] " . date('Y-m-d H:i:s', $line['start']) . "\n";
-                        echo "[Ended at] " . date('Y-m-d H:i:s', $line['end']) . "\n";
-                        echo "[Ran for] " . ($line['end'] - $line['start']) . " seconds\n";
-                    } elseif ($line['type'] == 'output') {
-                        if ($lastType != 'output')
-                            echo "\n";
-                        echo $line['text'];
-                    } elseif ($line['type'] == 'error') {
-                        echo "\n[Error] " . rtrim($line['text']);
-                    } elseif ($line['type'] == 'command') {
-                        echo "\n[Command] {$line['command']} [Return: {$line['return']}] [Output: " . rtrim($line['output']) . "]";
-                        if (isset($line['error']))
-                            echo " [Error: " . rtrim($line['error']) . "]";
+        $entry = $history[$id];
+        $lastType = '';
+
+        foreach ($entry as $line) {
+            switch ($line['type']) {
+                case 'program':
+                    $output->writeln("[Command Line] {$line['text']}");
+                    $output->writeln("[Started at] " . date('Y-m-d H:i:s', $line['start']));
+                    $output->writeln("[Ended at] " . date('Y-m-d H:i:s', $line['end']));
+                    $output->writeln("[Ran for] " . ($line['end'] - $line['start']) . " seconds");
+                    break;
+
+                case 'output':
+                    if ($lastType !== 'output') {
+                        $output->writeln("");
                     }
-                    $lastType = $line['type'];
-                }
-                if ($lastType != 'output' || rtrim($line['text']) == $line['text'])
-                    echo "\n";
-                fclose($fileHandle);
-                return;
+                    $output->write($line['text']);
+                    break;
+
+                case 'error':
+                    $output->writeln("\n[Error] " . rtrim($line['text']));
+                    break;
+
+                case 'command':
+                    $output->writeln("\n[Command] {$line['command']} [Return: {$line['return']}] [Output: " . rtrim($line['output']) . "]");
+                    if (isset($line['error'])) {
+                        $output->writeln(" [Error: " . rtrim($line['error']) . "]");
+                    }
+                    break;
             }
-            $currentId++;
+            $lastType = $line['type'];
         }
 
-        fclose($fileHandle);
-        echo 'Invalid ID' . PHP_EOL;
+        $output->writeln("");
+        return Command::SUCCESS;
     }
 }

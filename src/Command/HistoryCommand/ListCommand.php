@@ -1,53 +1,45 @@
 <?php
-namespace App\Command\HistoryCommand;
+namespace App\Command\History;
 
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use App\Vps;
-use App\Os\Xinetd;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Component\Table\Table;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
 
-class ListCommand extends Command {
-	public function brief() {
-		return "lists the history entries";
-	}
+class ListCommand extends Command
+{
+    protected static $defaultName = 'history:list';
 
-    /** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-	}
+    protected function configure()
+    {
+        $this
+            ->setDescription('Lists the history entries')
+            ->addOption('verbose', 'v', InputOption::VALUE_NONE, 'Increase verbosity')
+            ->addOption('virt', 't', InputOption::VALUE_REQUIRED, 'Virtualization type');
+    }
 
-    /** @param \CLIFramework\ArgInfoList $args */
-	public function arguments($args) {
-	}
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        Vps::init($input->getOptions(), []);
 
-	public function execute() {
-		Vps::init($this->getOptions(), []);
-        $historyFilePath = $_SERVER['HOME'] . '/.provirted/history.json';
+        $file = $_SERVER['HOME'] . '/.provirted/history.json';
 
-        if (!file_exists($historyFilePath)) {
-            echo 'No history has been logged yet' . PHP_EOL;
-            return;
+        if (!file_exists($file)) {
+            $output->writeln('No history has been logged yet');
+            return Command::SUCCESS;
         }
 
-        $fileHandle = fopen($historyFilePath, 'r');
-        if ($fileHandle === false) {
-            echo 'Failed to open history file' . PHP_EOL;
-            return;
+        $history = json_decode(file_get_contents($file), true);
+        if (!is_array($history)) {
+            $output->writeln('History file invalid');
+            return Command::FAILURE;
         }
 
-        $id = 0;
-        while (($line = fgets($fileHandle)) !== false) {
-            $data = json_decode(trim($line), true);
-            echo "{$id}\t{$data[0]['text']}\n";
-            $id++;
+        foreach ($history as $id => $entry) {
+            $output->writeln("{$id}\t{$entry[0]['text']}");
         }
 
-        fclose($fileHandle);
+        return Command::SUCCESS;
     }
 }

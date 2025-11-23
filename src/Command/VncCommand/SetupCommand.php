@@ -1,44 +1,46 @@
 <?php
-namespace App\Command\VncCommand;
+namespace App\Command\Vnc;
 
 use App\Vps;
-use App\Vps\Virtuozzo;
-use App\Os\Xinetd;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
 
-class SetupCommand extends Command {
-	public function brief() {
-		return "Setup VNC Allowed IP on a Virtual Machine.";
-	}
+class SetupCommand extends Command
+{
+    protected static $defaultName = 'vnc:setup';
 
-    /** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-	}
+    protected function configure()
+    {
+        $this
+            ->setDescription("Setup VNC allowed IP for a VPS")
+            ->addArgument('vzid', InputArgument::REQUIRED)
+            ->addArgument('ip', InputArgument::OPTIONAL)
+            ->addOption('verbose-level', 'v', InputOption::VALUE_NONE)
+            ->addOption('virt', 't', InputOption::VALUE_REQUIRED);
+    }
 
-    /** @param \CLIFramework\ArgInfoList $args */
-	public function arguments($args) {
-		$args->add('vzid')->desc('VPS id/name to use')->isa('string')->validValues([Vps::class, 'getAllVpsAllVirts']);
-		$args->add('ip')->desc('IP Address')->isa('string');
-	}
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        $vzid = $input->getArgument('vzid');
+        $ip   = $input->getArgument('ip');
 
-	public function execute($vzid, $ip = '') {
-		Vps::init($this->getOptions(), ['vzid' => $vzid, 'ip' => $ip]);
-		if (!Vps::isVirtualHost()) {
-			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
-			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
-			return 1;
-		}
-		if (!Vps::vpsExists($vzid)) {
-			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
-			return 1;
-		}
-		Vps::setupVnc($vzid, $ip);
-	}
+        Vps::init($input->getOptions(), ['vzid' => $vzid, 'ip' => $ip]);
+
+        if (!Vps::isVirtualHost()) {
+            Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
+            return Command::FAILURE;
+        }
+
+        if (!Vps::vpsExists($vzid)) {
+            Vps::getLogger()->error("The VPS '{$vzid}' does not exist.");
+            return Command::FAILURE;
+        }
+
+        Vps::setupVnc($vzid, $ip);
+
+        return Command::SUCCESS;
+    }
 }
