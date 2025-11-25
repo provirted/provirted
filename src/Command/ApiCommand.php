@@ -1,17 +1,14 @@
 <?php
 namespace App\Command;
 
-use App\Vps;
-use App\Os\Os;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
-use CLIFramework\Component\Progress\ProgressBar;
+use Symfony\Component\Console\Command\Command;
 
-class ApiCommand extends Command {
-	public function brief() {
-		return "Run internal api calls";
-	}
+class ApiCommand extends Command
+{
+    protected static $defaultName = 'api';
+
+    protected function configure()
+    {
+        $this->setDescription('Run internal api calls');
+    }
 }

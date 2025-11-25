@@ -2,51 +2,57 @@
 namespace App\Command;
 
 use App\Vps;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
 
-class DestroyCommand extends Command {
-	public function brief() {
-		return "Destroys a Virtual Machine.";
-	}
+class DestroyCommand extends Command
+{
+    protected static $defaultName = 'destroy';
 
-    /** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-        $opts->add('o|order-id:', 'Order ID')->isa('number');
-	}
+    protected function configure()
+    {
+        $this
+            ->setDescription('Destroys a Virtual Machine.')
+            ->addOption('verbose', 'v', InputOption::VALUE_OPTIONAL, 'Increase verbosity', null)
+            ->addOption('virt', 't', InputOption::VALUE_REQUIRED, 'Virtualization type')
+            ->addOption('order-id', 'o', InputOption::VALUE_REQUIRED, 'Order ID')
+            ->addArgument('vzid', InputArgument::REQUIRED, 'VPS id/name to destroy');
+    }
 
-    /** @param \CLIFramework\ArgInfoList $args */
-	public function arguments($args) {
-		$args->add('vzid')->desc('VPS id/name to use')->isa('string')->validValues([Vps::class, 'getAllVpsAllVirts']);
-	}
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        $vzid = $input->getArgument('vzid');
+        $opts = $input->getOptions();
 
-	public function execute($vzid) {
-		Vps::init($this->getOptions(), ['vzid' => $vzid]);
-		if (!Vps::isVirtualHost()) {
-			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
-			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
-			return 1;
-		}
-        $opts = $this->getOptions();
-        $orderId = array_key_exists('order-id', $opts->keys) ? $opts->keys['order-id']->value : '';
-		if (!Vps::vpsExists($vzid)) {
-			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
-			return 1;
-		}
-        if (file_exists('/vz/'.$vzid.'/protected')) {
-            Vps::getLogger()->error("The VPS '{$vzid}' you specified is protected.");
-            return 1;
+        Vps::init($opts, ['vzid' => $vzid]);
+
+        if (!Vps::isVirtualHost()) {
+            Vps::getLogger()->error("Virtualization not installed.");
+            return Command::FAILURE;
         }
-		Vps::destroyVps($vzid);
+
+        $orderId = $input->getOption('order-id') ?: '';
+
+        if (!Vps::vpsExists($vzid)) {
+            Vps::getLogger()->error("VPS '{$vzid}' does not exist.");
+            return Command::FAILURE;
+        }
+
+        if (file_exists('/vz/'.$vzid.'/protected')) {
+            Vps::getLogger()->error("VPS '{$vzid}' is protected.");
+            return Command::FAILURE;
+        }
+
+        Vps::destroyVps($vzid);
+
         if ($orderId != '') {
             $url = Vps::getUrl();
             Vps::runCommand("curl --connect-timeout 10 --max-time 20 -k -d action=finished -d command=destroy -d service={$orderId} '{$url}' < /dev/null > /dev/null 2>&1;");
         }
-	}
+
+        return Command::SUCCESS;
+    }
 }

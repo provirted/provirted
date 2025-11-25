@@ -3,147 +3,157 @@ namespace App\Command;
 
 use App\Vps;
 use App\Os\Os;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
-use CLIFramework\Component\Progress\ProgressBar;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
 
-class CreateCommand extends Command {
-    public function brief() {
-        return "Creates a Virtual Machine.";
-    }
+class CreateCommand extends Command
+{
+    protected static $defaultName = 'create';
 
-    public function usage()
+    protected function configure()
     {
-        return <<<HELP
-Creates a new VPS with the given <hostname> and primary IP address <ip>.  The <template> file/url is used as the source image to copy to the VPS.
-HELP;
+        $this
+            ->setDescription('Creates a Virtual Machine.')
+            ->setHelp(
+                "Creates a new VPS with the given <hostname> and primary IP address <ip>. The <template> file/url ".
+                "is used as the source image.\n\n".
+                "EXAMPLES:\n".
+                "  create vps1001 vps2.provirted.com 192.168.1.103 centos-7 25 2048 1 password\n".
+                "  create --virt=virtuozzo vps1002 vps3.provirted.com 192.168.1.104 ubuntu-20.04 25 2048 1 password\n".
+                "  create -vv --order-id=2328714 --add-ip=192.168.1.101 --add-ip=192.168.1.102 ".
+                "--client-ip=127.0.0.1 --password=password vps1003 vps3.provirted.com 192.168.1.105 ".
+                "ubuntu-20.04 60 4096 2"
+            )
+            ->addOption('verbose', 'v', InputOption::VALUE_OPTIONAL, 'increase output verbosity (stacked)', null)
+            ->addOption('virt', 't', InputOption::VALUE_REQUIRED, 'Type of Virtualization', null)
+            ->addOption('mac', 'm', InputOption::VALUE_REQUIRED, 'MAC Address')
+            ->addOption('order-id', 'o', InputOption::VALUE_REQUIRED, 'Order ID')
+            ->addOption('add-ip', 'i', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Additional IPs')
+            ->addOption('client-ip', 'c', InputOption::VALUE_REQUIRED, 'Client IP')
+            ->addOption('all', 'a', InputOption::VALUE_NONE, 'Use ALL available hardware resources')
+            ->addOption('password', 'p', InputOption::VALUE_REQUIRED, 'Password')
+            ->addOption('ssh-key', null, InputOption::VALUE_REQUIRED, 'Optional SSH Key to add')
+            ->addOption('io-limit', null, InputOption::VALUE_REQUIRED, 'IO Limit bytes/s')
+            ->addOption('iops-limit', null, InputOption::VALUE_REQUIRED, 'IO Limit iops')
+            ->addOption('ipv6-ip', null, InputOption::VALUE_REQUIRED, 'IPv6 Address')
+            ->addOption('ipv6-range', null, InputOption::VALUE_REQUIRED, 'IPv6 Range')
+
+            ->addArgument('vzid', InputArgument::REQUIRED, 'VPS id/name')
+            ->addArgument('hostname', InputArgument::REQUIRED, 'Hostname')
+            ->addArgument('ip', InputArgument::REQUIRED, 'Primary IP')
+            ->addArgument('template', InputArgument::REQUIRED, 'Template name')
+            ->addArgument('hd', InputArgument::OPTIONAL, 'HD Size in GB', 25)
+            ->addArgument('ram', InputArgument::OPTIONAL, 'RAM in MB', 1024)
+            ->addArgument('cpu', InputArgument::OPTIONAL, 'Number of CPUs', 1)
+            ->addArgument('password', InputArgument::OPTIONAL, 'Root password', '');
     }
 
-    public function help()
+    private function validIp($ip, $supportIpv6 = false)
     {
-        $progName = basename($this->getApplication()->getProgramName());
-        return <<<HELP
-<bold>EXAMPLES</bold>
-	{$progName} create vps1001 vps2.provirted.com 192.168.1.103 centos-7 25 2048 1 password
-	{$progName} create --virt=virtuozzo vps1002 vps3.provirted.com 192.168.1.104 ubuntu-20.04 25 2048 1 password
-	{$progName} create -vv --order-id=2328714 --add-ip=192.168.1.101 --add-ip=192.168.1.102 --client-ip=127.0.0.1 --pasword=password vps1003 vps3.provirted.com 192.168.1.105 ubuntu-20.04 60 4096 2
-
-<underline>underlined text</underline>
-HELP;
-    }
-
-    /** @param \GetOptionKit\OptionCollection $opts */
-    public function options($opts) {
-        parent::options($opts);
-        $opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-        $opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-        $opts->add('m|mac:', 'MAC Address')->isa('string');
-        $opts->add('o|order-id:', 'Order ID')->isa('number');
-        $opts->add('i|add-ip+', 'Additional IPs')->multiple()->isa('string');
-        $opts->add('c|client-ip:', 'Client IP')->isa('string');
-        $opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
-        $opts->add('p|password:', 'Password')->isa('string');
-        $opts->add('ssh-key:', 'Optional SSH Keys to add')->isa('string');
-        $opts->add('io-limit:', 'The IO Limit in bytes/s')->isa('number');
-        $opts->add('iops-limit:', 'The IO Limit in iops')->isa('number');
-        $opts->add('ipv6-ip:', 'The IPv6 IP Address if one is to be set')->isa('string');
-        $opts->add('ipv6-range:', 'The IPv6 IP Range if one is to be set')->isa('string');
-    }
-
-    /** @param \CLIFramework\ArgInfoList $args */
-    public function arguments($args) {
-        $args->add('vzid')->desc('VPS id/name to use')->isa('string');
-        $args->add('hostname')->desc('Hostname to use')->isa('string');
-        //$args->add('ip')->desc('IP Address')->isa('ip');
-        $args->add('ip')->desc('IP Address')->isa('string'); // to temp allow 'none'
-        $args->add('template')->desc('Install Image To Use')->isa('string');
-        $args->add('hd')->desc('HD Size in GB')->optional()->isa('number');
-        $args->add('ram')->desc('Ram In MB')->optional()->isa('number');
-        $args->add('cpu')->desc('Number of CPUs/Cores')->optional()->isa('number');
-        $args->add('password')->desc('Root/Administrator password')->optional()->isa('string');
-    }
-
-
-    public function validIp($ip, $support_ipv6 = false)
-    {
-        if (version_compare(PHP_VERSION, '5.2.0') >= 0) {
-            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false)
-                if ($support_ipv6 === false || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false)
-                    return false;
-        } else {
-            if (!preg_match("/^[0-9\.]{7,15}$/", $ip))
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) === false) {
+            if (!$supportIpv6 || filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
                 return false;
-            $quads = explode('.', $ip);
-            $numquads = count($quads);
-            if ($numquads != 4)
-                return false;
-            for ($i = 0; $i < 4; $i++)
-                if ($quads[$i] > 255)
-                    return false;
+            }
         }
         return true;
     }
 
-    public function execute($vzid, $hostname, $ip, $template, $hd = 25, $ram = 1024, $cpu = 1, $password = '') {
-        Vps::init($this->getOptions(), ['vzid' => $vzid, 'hostname' => $hostname, 'ip' => $ip, 'template' => $template, 'hd' => $hd, 'ram' => $ram, 'cpu' => $cpu, 'password' => $password]);
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        $vzid     = $input->getArgument('vzid');
+        $hostname = $input->getArgument('hostname');
+        $ip       = $input->getArgument('ip');
+        $template = $input->getArgument('template');
+        $hd       = $input->getArgument('hd');
+        $ram      = $input->getArgument('ram');
+        $cpu      = $input->getArgument('cpu');
+        $password = $input->getArgument('password');
+
+        $opts = $input->getOptions();
+
+        Vps::init($opts, [
+            'vzid' => $vzid,
+            'hostname' => $hostname,
+            'ip' => $ip,
+            'template' => $template,
+            'hd' => $hd,
+            'ram' => $ram,
+            'cpu' => $cpu,
+            'password' => $password
+        ]);
+
         if (!Vps::isVirtualHost()) {
-            Vps::getLogger()->writeln("This machine does not appear to have any virtualization setup installed.");
-            Vps::getLogger()->writeln("Check the help to see how to prepare a virtualization environment.");
-            return 1;
+            Vps::getLogger()->writeln("This machine does not appear to have virtualization installed.");
+            return Command::FAILURE;
         }
+
         if (file_exists('/vz/'.$vzid.'/protected')) {
-            Vps::getLogger()->error("The VPS '{$vzid}' you specified is protected.");
-            return 1;
+            Vps::getLogger()->error("VPS '{$vzid}' is protected.");
+            return Command::FAILURE;
         }
-        /** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
-        $opts = $this->getOptions();
-        Vps::getLogger()->info('Initializing Variables and process Options and Arguments');
-        $error = 0;
-        $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
-        $extraIps = array_key_exists('add-ip', $opts->keys) ? $opts->keys['add-ip']->value : [];
-        $password = array_key_exists('password', $opts->keys) ? $opts->keys['password']->value : $password;
-        $clientIp = array_key_exists('client-ip', $opts->keys) ? $opts->keys['client-ip']->value : '';
-        $orderId = array_key_exists('order-id', $opts->keys) ? $opts->keys['order-id']->value : '';
-        $mac = array_key_exists('mac', $opts->keys) ? $opts->keys['mac']->value : '';
-        $sshKey = array_key_exists('ssh-key', $opts->keys) ? $opts->keys['ssh-key']->value : false;
-        $ipv6Ip = array_key_exists('ipv6-ip', $opts->keys) ? $opts->keys['ipv6-ip']->value : false;
-        $ipv6Range = array_key_exists('ipv6-range', $opts->keys) ? $opts->keys['ipv6-range']->value : false;
-        $ioLimit = $useAll === false && array_key_exists('io-limit', $opts->keys) ? $opts->keys['io-limit']->value : false;
-        $iopsLimit = $useAll === false && array_key_exists('iops-limit', $opts->keys) ? $opts->keys['iops-limit']->value : false;
-        if (!empty($ip) && !$this->validIp($ip,true)) {
-            Vps::getLogger()->error("Invalid IP Address '{$ip}'.");
-            return 1;
+
+        Vps::getLogger()->info('Initializing Options');
+
+        $useAll     = $input->getOption('all');
+        $extraIps   = $input->getOption('add-ip') ?: [];
+        $password   = $input->getOption('password') ?: $password;
+        $clientIp   = $input->getOption('client-ip') ?: '';
+        $orderId    = $input->getOption('order-id') ?: '';
+        $mac        = $input->getOption('mac') ?: '';
+        $sshKey     = $input->getOption('ssh-key') ?: false;
+        $ipv6Ip     = $input->getOption('ipv6-ip') ?: false;
+        $ipv6Range  = $input->getOption('ipv6-range') ?: false;
+
+        $ioLimit    = !$useAll ? $input->getOption('io-limit') : false;
+        $iopsLimit  = !$useAll ? $input->getOption('iops-limit') : false;
+
+        if (!empty($ip) && !$this->validIp($ip, true)) {
+            Vps::getLogger()->error("Invalid IP '{$ip}'.");
+            return Command::FAILURE;
         }
-        if ($useAll == true && trim(`virsh list --all|grep qs`) != '') {
-            Vps::getLogger()->error("There is already a VPS on this system so it cannot create one that uses all resources.");
-            return 1;
+
+        if ($useAll && trim(`virsh list --all | grep qs`) != '') {
+            Vps::getLogger()->error("Cannot create an all-resource VPS when one already exists.");
+            return Command::FAILURE;
         }
-        if ($orderId == '')
-            $orderId = str_replace(['qs', 'windows', 'linux', 'vps'], ['', '', '', ''], $vzid); // convert hostname to id
-        if ($mac == '' && is_numeric($orderId))
-            $mac = Vps::convertIdToMac($orderId, $useAll); // use id to generate mac address
+
+        if ($orderId == '') {
+            $orderId = str_replace(['qs','windows','linux','vps'], '', $vzid);
+        }
+
+        if ($mac == '' && is_numeric($orderId)) {
+            $mac = Vps::convertIdToMac($orderId, $useAll);
+        }
+
         $url = Vps::getUrl();
         $kpartxOpts = preg_match('/sync/', Vps::runCommand("kpartx 2>&1")) ? '-s' : '';
-        $ram = $ram * 1024; // convert ram to kb
-        $hd = $hd * 1024; // convert hd to mb
+
+        $ram = $ram * 1024;
+        $hd  = $hd * 1024;
+
         $device = '';
-        $pool = '';
-        if ($useAll == true) {
-            $hd = 'all';
+        $pool   = '';
+
+        if ($useAll) {
+            $hd  = 'all';
             $ram = Os::getUsableRam();
             $cpu = Os::getCpuCount();
         }
+
         $maxCpu = $cpu > 8 ? $cpu : 8;
         $maxRam = $ram > 16384000 ? $ram : 16384000;
+
         if (Vps::getVirtType() == 'kvm') {
             $pool = Vps::getPoolType();
-            $device = $pool == 'zfs' ? '/vz/'.$vzid.'/os.qcow2' : '/dev/vz/'.$vzid;
+            $device = $pool == 'zfs' ? "/vz/{$vzid}/os.qcow2" : "/dev/vz/{$vzid}";
         }
+
         $webuzo = false;
         $cpanel = false;
+
         if (Vps::getVirtType() == 'virtuozzo') {
             if ($template == 'centos-7-x86_64-breadbasket') {
                 $template = 'centos-7-x86_64';
@@ -153,57 +163,78 @@ HELP;
                 $cpanel = true;
             }
         }
+
         $this->progress(5, $url, $orderId);
         Os::checkDeps();
         $this->progress(10, $url, $orderId);
+
         Vps::setupStorage($vzid, $device, $pool, $hd);
         $this->progress(15, $url, $orderId);
-        if ($error == 0) {
-            if (!Vps::defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $maxRam, $maxCpu, $useAll, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit))
-                $error++;
-            else
-                $this->progress(25, $url, $orderId);
+
+        $error = 0;
+
+        if (!Vps::defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool,
+            $ram, $cpu, $hd, $maxRam, $maxCpu, $useAll, $password, $ipv6Ip, $ipv6Range,
+            $ioLimit, $iopsLimit)) {
+            $error++;
+        } else {
+            $this->progress(25, $url, $orderId);
         }
+
         if ($error == 0) {
-            if (!Vps::installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit))
+            if (!Vps::installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit)) {
                 $error++;
-            else
+            } else {
                 $this->progress(70, $url, $orderId);
+            }
+
             if (Vps::getVirtType() == 'kvm') {
                 $password = escapeshellarg($password);
                 $hostname = escapeshellarg($hostname);
                 $cmd = "virt-customize -d {$vzid} --root-password password:{$password} --hostname {$hostname}";
-                if ($sshKey != false) {
+                if ($sshKey) {
                     $sshKey = escapeshellarg($sshKey);
                     $cmd .= " --ssh-inject root:string:{$sshKey}";
                 }
                 Vps::getLogger()->write(Vps::runCommand("{$cmd};"));
             }
         }
+
         if ($error == 0) {
-            Vps::getLogger()->info('Enabling and Starting up the VPS');
+            Vps::getLogger()->info('Starting VPS');
             Vps::enableAutostart($vzid);
             Vps::startVps($vzid);
             $this->progress(85, $url, $orderId);
         }
+
         if ($error == 0) {
-            if ($webuzo === true)
+            if ($webuzo) {
                 Vps::setupWebuzo($vzid);
-            if ($cpanel === true)
+            }
+
+            if ($cpanel) {
                 Vps::setupCpanel($vzid);
+            }
+
             Vps::setupCgroups($vzid, $useAll, $cpu);
             $this->progress(90, $url, $orderId);
+
             Vps::setupRouting($vzid, $ip, $pool, $useAll, $orderId);
             $this->progress(95, $url, $orderId);
+
             Vps::setupVnc($vzid, $clientIp);
             Vps::vncScreenshot($vzid, $url);
+
             $this->progress(100, $url, $orderId);
         }
+
+        return Command::SUCCESS;
     }
 
-    public function progress($progress, $url, $orderId) {
-        $progress = escapeshellarg($progress);
-        Vps::runCommand("curl --connect-timeout 10 --max-time 20 -k -d action=install_progress -d progress={$progress} -d server={$orderId} '{$url}' < /dev/null > /dev/null 2>&1;");
-        Vps::getLogger()->writeln($progress.'%');
+    private function progress($progress, $url, $orderId)
+    {
+        $safe = escapeshellarg($progress);
+        Vps::runCommand("curl --connect-timeout 10 --max-time 20 -k -d action=install_progress -d progress={$safe} -d server={$orderId} '{$url}' < /dev/null > /dev/null 2>&1;");
+        Vps::getLogger()->writeln($safe.'%');
     }
 }

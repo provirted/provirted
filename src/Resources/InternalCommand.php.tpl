@@ -2,57 +2,70 @@
 namespace App\Command\InternalsCommand\{$class.name}Command;
 
 use {$class.fullName};
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Component\Table\Table;
-use CLIFramework\Component\Table\MarkdownTableStyle;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Helper\Table;
 
 {if isset($method.summary)}
 /**
-* {$method.summary}
-*/
+ * {$method.summary}
+ */
 {/if}
 class {$method.pascal}Command extends Command
 {
-	public function brief() {
-		return "{if isset($method.summary)}{$method.summary}{else}{$class.name}{/if}";
-	}
+    protected static $defaultName = 'internals:{$class.name}:{$method.name}';
 
-    /** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('j|json', 'output in JSON format');
-		$opts->add('p|php', 'output in PHP format');
-	}
+    protected function configure()
+    {
+        $this
+            ->setDescription("{if isset($method.summary)}{$method.summary}{else}{$class.name}{/if}")
+            ->addOption('verbose', 'v', InputOption::VALUE_NONE, 'increase output verbosity')
+            ->addOption('json', 'j', InputOption::VALUE_NONE, 'output in JSON format')
+            ->addOption('php',  'p', InputOption::VALUE_NONE, 'output in PHP format');
+    }
 
-	public function execute() {
-		$opts = $this->getOptions();
-		$json = array_key_exists('json', $opts->keys) && $opts->keys['json']->value == 1;
-		$php = array_key_exists('php', $opts->keys) && $opts->keys['php']->value == 1;
-		$response = {$class.name}::{$method.name}();
-		if ($json == true) {
-			$this->getLogger()->write(json_encode($response, JSON_PRETTY_PRINT));
-		} elseif ($php == true) {
-			$this->getLogger()->write(var_export($response, true));
-		} else {
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        $json = $input->getOption('json');
+        $php  = $input->getOption('php');
+
+        $response = {$class.name}::{$method.name}();
+
+        if ($json) {
+            $output->writeln(json_encode($response, JSON_PRETTY_PRINT));
+            return Command::SUCCESS;
+        }
+
+        if ($php) {
+            $output->writeln(var_export($response, true));
+            return Command::SUCCESS;
+        }
+
 {if isset($method.returnType) && $method.returnType == 'array'}
-			if (count($response) == 0) {
-				$this->getLogger()->error('This machine does not appear to have any virtualization setup installed.');
-				return 1;
-			}
-			$table = new Table;
-			$table->setStyle(new MarkdownTableStyle());
-			$table->setHeaders(['vps']);
-			$formatter = new Formatter;
-			foreach ($response as $line)
-				$table->addRow([$line]);
-			echo $table->render();
+        if (count($response) === 0) {
+            $output->writeln('<error>This machine does not appear to have any virtualization setup installed.</error>');
+            return Command::FAILURE;
+        }
+
+        $table = new Table($output);
+        $table->setHeaders(['vps']);
+
+        foreach ($response as $line) {
+            $table->addRow([$line]);
+        }
+
+        $table->render();
+
 {elseif isset($method.returnType) && $method.returnType == 'bool'}
-			echo ($response === true ? 'true' : 'false').PHP_EOL;
+        $output->writeln($response === true ? 'true' : 'false');
+
 {else}
-			echo $response.PHP_EOL;
+        $output->writeln($response);
+
 {/if}
-		}
-	}
+
+        return Command::SUCCESS;
+    }
 }
