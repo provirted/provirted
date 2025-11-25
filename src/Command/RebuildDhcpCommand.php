@@ -4,52 +4,76 @@ namespace App\Command;
 use App\Vps;
 use App\Os\Dhcpd;
 use App\Os\Dhcpd6;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
 
-class RebuildDhcpCommand extends Command {
-	public function brief() {
-		return "Regenerates the dhcpd config and host assignments files.\n\n	<what> can be 'conf', 'vps', or 'all' to regenerate the config file, host assignmetns file, or both (respectivly)";
-	}
+class RebuildDhcpCommand extends Command
+{
+    protected static $defaultName = 'rebuild-dhcp';
+    protected static $defaultDescription = "Regenerates the dhcpd config and host assignments files.\n\n\t<what> can be 'conf', 'vps', or 'all' to regenerate the config file, host assignmetns file, or both (respectivly)";
 
-	/** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-		$opts->add('o|output', 'Output the file contents instead of writing it');
-	}
+    protected function configure()
+    {
+        $this
+            ->addOption(
+                'verbose',
+                'v',
+                InputOption::VALUE_NONE,
+                'increase output verbosity (stacked..use multiple times for even more output)'
+            )
+            ->addOption(
+                'virt',
+                't',
+                InputOption::VALUE_REQUIRED,
+                'Type of Virtualization, kvm, openvz, virtuozzo, lxc'
+            )
+            ->addOption(
+                'output',
+                'o',
+                InputOption::VALUE_NONE,
+                'Output the file contents instead of writing it'
+            )
+            ->addArgument(
+                'what',
+                InputArgument::REQUIRED,
+                "rebuild the dhcpd.conf config (conf), dhcpd.vps host asignments (vps), or both (all)"
+            );
+    }
 
-	/** @param \CLIFramework\ArgInfoList $args */
-	public function arguments($args) {
-		$args->add('what')->desc('rebuild the dhcpd.conf config (conf), dhcpd.vps host asignments (vps), or both (all)')->validValues(['conf','vps','all']);
-	}
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        $what = $input->getArgument('what');
+        $opts = $input->getOptions();
 
-	public function execute($what = '') {
-		Vps::init($this->getOptions(), ['what' => $what]);
-		if (!Vps::isVirtualHost()) {
-			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
-			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
-			return 1;
-		}
-		if (!in_array($what, ['conf', 'vps', 'all'])) {
-			Vps::getLogger()->error("Invalid or missing <what> value");
-			Vps::getLogger()->error("<what> can be 'conf', 'vps', or 'all' to regenerate the config file, host assignmetns file, or both (respectivly)");
-			return 1;
-		}
-		/** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
-		$opts = $this->getOptions();
-		$output = array_key_exists('output', $opts->keys) && $opts->keys['output']->value == 1;
-		if (in_array($what, ['conf', 'all'])) {
-			Dhcpd::rebuildConf($output);
-			Dhcpd6::rebuildConf($output);
-		}
-		if (in_array($what, ['vps', 'all'])) {
-			Dhcpd::rebuildHosts($output);
-			Dhcpd6::rebuildHosts($output);
-		}
-	}
+        Vps::init($opts, ['what' => $what]);
+
+        if (!Vps::isVirtualHost()) {
+            Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
+            Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
+            return Command::FAILURE;
+        }
+
+        if (!in_array($what, ['conf', 'vps', 'all'])) {
+            Vps::getLogger()->error("Invalid or missing <what> value");
+            Vps::getLogger()->error("<what> can be 'conf', 'vps', or 'all' to regenerate the config file, host assignmetns file, or both (respectivly)");
+            return Command::FAILURE;
+        }
+
+        $outputFlag = $input->getOption('output');
+
+        if (in_array($what, ['conf', 'all'])) {
+            Dhcpd::rebuildConf($outputFlag);
+            Dhcpd6::rebuildConf($outputFlag);
+        }
+
+        if (in_array($what, ['vps', 'all'])) {
+            Dhcpd::rebuildHosts($outputFlag);
+            Dhcpd6::rebuildHosts($outputFlag);
+        }
+
+        return Command::SUCCESS;
+    }
 }

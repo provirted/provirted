@@ -2,47 +2,79 @@
 namespace App\Command;
 
 use App\Vps;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
 
-class StopCommand extends Command {
-	public function brief() {
-		return "Stops a Virtual Machine.";
-	}
+#[AsCommand(
+    name: 'stop',
+    description: 'Stops a Virtual Machine.'
+)]
+class StopCommand extends Command
+{
+    protected function configure()
+    {
+        $this
+            ->addOption(
+                'verbose',
+                'v',
+                InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY,
+                'increase output verbosity (stacked..use multiple times for even more output)'
+            )
+            ->addOption(
+                'virt',
+                't',
+                InputOption::VALUE_REQUIRED,
+                'Type of Virtualization, kvm, openvz, virtuozzo, lxc'
+            )
+            ->addOption(
+                'fast',
+                'f',
+                InputOption::VALUE_NONE,
+                'Fast shutdown'
+            )
+            ->addArgument(
+                'vzid',
+                InputArgument::REQUIRED,
+                'VPS id/name to use'
+            );
+    }
 
-    /** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-		$opts->add('f|fast', 'Fast shutdown');
-	}
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        $vzid = $input->getArgument('vzid');
 
-    /** @param \CLIFramework\ArgInfoList $args */
-	public function arguments($args) {
-		$args->add('vzid')->desc('VPS id/name to use')->isa('string')->validValues([Vps::class, 'getAllVpsAllVirts']);
-	}
+        $options = [
+            'verbose' => count($input->getOption('verbose')),
+            'virt' => $input->getOption('virt'),
+            'fast' => $input->getOption('fast'),
+        ];
 
-	public function execute($vzid) {
-		Vps::init($this->getOptions(), ['vzid' => $vzid]);
-		$opts = $this->getOptions();
-		$fast = array_key_exists('fast', $opts->keys) && $opts->keys['fast']->value == 1;
-		if (!Vps::isVirtualHost()) {
-			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
-			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
-			return 1;
-		}
-		if (!Vps::vpsExists($vzid)) {
-			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
-			return 1;
-		}
-		if (!Vps::isVpsRunning($vzid)) {
-			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to be powered on.");
-			return 1;
-		}
-		Vps::stopVps($vzid, $fast);
-	}
+        Vps::init($options, ['vzid' => $vzid]);
+
+        $fast = (bool)$input->getOption('fast');
+
+        if (!Vps::isVirtualHost()) {
+            Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
+            Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
+            return Command::FAILURE;
+        }
+
+        if (!Vps::vpsExists($vzid)) {
+            Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
+            return Command::FAILURE;
+        }
+
+        if (!Vps::isVpsRunning($vzid)) {
+            Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to be powered on.");
+            return Command::FAILURE;
+        }
+
+        Vps::stopVps($vzid, $fast);
+
+        return Command::SUCCESS;
+    }
 }

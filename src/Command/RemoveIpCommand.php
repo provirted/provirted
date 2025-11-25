@@ -2,41 +2,65 @@
 namespace App\Command;
 
 use App\Vps;
-use CLIFramework\Command;
-use CLIFramework\Formatter;
-use CLIFramework\Logger\ActionLogger;
-use CLIFramework\Debug\LineIndicator;
-use CLIFramework\Debug\ConsoleDebug;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
 
-class RemoveIpCommand extends Command {
-	public function brief() {
-		return "Removes an IP Address from a Virtual Machine.";
-	}
+class RemoveIpCommand extends Command
+{
+    protected static $defaultName = 'remove-ip';
+    protected static $defaultDescription = 'Removes an IP Address from a Virtual Machine.';
 
-    /** @param \GetOptionKit\OptionCollection $opts */
-	public function options($opts) {
-		parent::options($opts);
-		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
-	}
+    protected function configure()
+    {
+        $this
+            ->addOption(
+                'verbose',
+                'v',
+                InputOption::VALUE_NONE,
+                'increase output verbosity (stacked..use multiple times for even more output)'
+            )
+            ->addOption(
+                'virt',
+                't',
+                InputOption::VALUE_REQUIRED,
+                'Type of Virtualization, kvm, openvz, virtuozzo, lxc'
+            )
+            ->addArgument(
+                'vzid',
+                InputArgument::REQUIRED,
+                'VPS id/name to use'
+            )
+            ->addArgument(
+                'ip',
+                InputArgument::REQUIRED,
+                'IP Address'
+            );
+    }
 
-    /** @param \CLIFramework\ArgInfoList $args */
-	public function arguments($args) {
-		$args->add('vzid')->desc('VPS id/name to use')->isa('string')->validValues([Vps::class, 'getAllVpsAllVirts']);
-		$args->add('ip')->desc('IP Address')->isa('ip');
-	}
+    protected function execute(InputInterface $input, OutputInterface $output)
+    {
+        $vzid = $input->getArgument('vzid');
+        $ip = $input->getArgument('ip');
+        $opts = $input->getOptions();
 
-	public function execute($vzid, $ip) {
-		Vps::init($this->getOptions(), ['vzid' => $vzid, 'ip' => $ip]);
-		if (!Vps::isVirtualHost()) {
-			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
-			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
-			return 1;
-		}
-		if (!Vps::vpsExists($vzid)) {
-			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
-			return 1;
-		}
-		Vps::removeIp($vzid, $ip);
-	}
+        Vps::init($opts, ['vzid' => $vzid, 'ip' => $ip]);
+
+        if (!Vps::isVirtualHost()) {
+            Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
+            Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
+            return Command::FAILURE;
+        }
+
+        if (!Vps::vpsExists($vzid)) {
+            Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
+            return Command::FAILURE;
+        }
+
+        Vps::removeIp($vzid, $ip);
+
+        return Command::SUCCESS;
+    }
 }
