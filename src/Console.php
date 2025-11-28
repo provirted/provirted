@@ -67,8 +67,11 @@ class Console extends Application
         foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($commandDir)) as $file) {
             if ($file->isFile() && $file->getExtension() === 'php') {
                 $class = $this->discoverCommandClass($file->getPathname());
-                if ($class && is_subclass_of($class, Symfony\Component\Console\Command\Command::class)) {
-                    $app->add(new $class());
+                if ($class && is_subclass_of($class, \Symfony\Component\Console\Command\Command::class)) {
+                    $reflection = new \ReflectionClass($class);
+                    if (!$reflection->isAbstract()) {
+                        $this->add(new $class());
+                    }
                 }
             }
         }
@@ -79,8 +82,7 @@ class Console extends Application
     {
         // Convert path -> FQCN using PSR-4 rules (assuming src/ is the PSR-4 root)
         $relative = str_replace(realpath(__DIR__) . DIRECTORY_SEPARATOR, '', realpath($filePath));
-        $class = 'App\\' . str_replace(['/', '.php'], ['\\', ''], $relative);
-        echo "Class: $class ".(class_exists($class) ? 'yes' : 'no')."\n";
+        $class = '\\App\\' . str_replace(['/', '.php'], ['\\', ''], $relative);
         // Return only if class exists
         return class_exists($class) ? $class : null;
     }

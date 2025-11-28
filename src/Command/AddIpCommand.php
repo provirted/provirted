@@ -12,7 +12,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 class AddIpCommand extends Command
 {
-    protected static $defaultName = 'ip:add';
+    protected static $defaultName = 'add-ip';
 
     protected function configure()
     {
