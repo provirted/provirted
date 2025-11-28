@@ -1,5 +1,5 @@
 <?php
-namespace App\Command\CronCommand;
+namespace App\Command\Cron;
 
 use App\Vps;
 use App\Os\Xinetd;

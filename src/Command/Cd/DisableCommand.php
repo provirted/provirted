@@ -1,5 +1,5 @@
 <?php
-namespace App\Command\CdCommand;
+namespace App\Command\Cd;
 
 use App\Vps;
 use Symfony\Component\Console\Command\Command;

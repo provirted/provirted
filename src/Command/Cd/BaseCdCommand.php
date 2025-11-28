@@ -1,5 +1,5 @@
 <?php
-namespace App\Command\CdCommand;
+namespace App\Command\Cd;
 
 use App\Logger;
 use App\Vps;

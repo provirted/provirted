@@ -14,7 +14,7 @@
 * - subtract the previous fraction from 1.0 to get the time spent being   not   idle
 * - multiple by   100   to get a percentage
 */
-namespace App\Command\CronCommand;
+namespace App\Command\Cron;
 
 use App\Vps;
 use App\Os\Xinetd;
