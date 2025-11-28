@@ -1,7 +1,11 @@
 <?php
 namespace App\Command;
 
-use CLIFramework\Command;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * Converted GenerateInternalsCommand to Symfony style.
@@ -52,7 +56,7 @@ class GenerateInternalsCommand extends Command
         return join('', $args);
     }
 
-    protected function execute(\Symfony\Component\Console\Input\InputInterface $input, \Symfony\Component\Console\Output\OutputInterface $output): int
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $templateFile = __DIR__ . '/../Resources/InternalCommand.php.tpl';
         $templateClassFile = __DIR__ . '/../Resources/InternalCommandClass.php.tpl';
