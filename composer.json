@@ -21,7 +21,7 @@
 	],
 	"require": {
 		"symfony/polyfill-php72": "1.30.0",
-		"symfony/console": "*@stable"
+		"symfony/console": "^5.4.0"
 	},
 	"require-dev": {
 		"smarty/smarty": "*",

@@ -7,14 +7,14 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use App\Vps;
 
-class ListCommand extends Command
+class CleanCommand extends Command
 {
-    protected static $defaultName = 'history:list';
+    protected static $defaultName = 'history:clean';
 
     protected function configure()
     {
         $this
-            ->setDescription('Lists the history entries')
+            ->setDescription('cleans up the history log removing certain entries"')
             ->addOption('verbose', 'v', InputOption::VALUE_NONE, 'Increase verbosity')
             ->addOption('virt', 't', InputOption::VALUE_REQUIRED, 'Virtualization type');
     }
@@ -23,23 +23,29 @@ class ListCommand extends Command
     {
         Vps::init($input->getOptions(), []);
 
-        $file = $_SERVER['HOME'] . '/.provirted/history.json';
-
-        if (!file_exists($file)) {
+        $allHistory = file_exists($_SERVER['HOME'].'/.provirted/history.json') ? json_decode(file_get_contents($_SERVER['HOME'].'/.provirted/history.json'), true) : [];
+        $newHistory = [];
+        $badLines = [
+            '/root/cpaneldirect/provirted.phar vnc rebuild',
+            '/root/cpaneldirect/provirted.phar cron host-info',
+        ];
+        if (count($allHistory) == 0) {
             $output->writeln('No history has been logged yet');
             return Command::SUCCESS;
         }
-
-        $history = json_decode(file_get_contents($file), true);
-        if (!is_array($history)) {
-            $output->writeln('History file invalid');
-            return Command::FAILURE;
+        $updates = 0;
+        foreach ($allHistory as $id => $data) {
+            if (!in_array($data[0]['text'], $badLines))
+                $newHistory[] = $data;
+            else
+                $updates++;
         }
-
-        foreach ($history as $id => $entry) {
-            $output->writeln("{$id}\t{$entry[0]['text']}");
+        if ($updates == 0) {
+            $output->wriuteln('No updates / changes to be made');
+            return Command::SUCCESS;
         }
-
+        $output->writeln('Dropped '.$updates.' History Entries');
+        file_put_contents($_SERVER['HOME'].'/.provirted/history.json', json_encode($newHistory, JSON_PRETTY_PRINT));
         return Command::SUCCESS;
     }
 }
