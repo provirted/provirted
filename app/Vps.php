@@ -124,7 +124,7 @@ class Vps
     * @param bool $useAll
     */
     public static function lock($vzid, $useAll) {
-        $response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=lock&vps='.$vzid.'&module='.($useAll === true ? 'quickservers' : 'vps'))));
+        $response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=lock&id='.$vzid.'&module='.($useAll === true ? 'quickservers' : 'vps'))));
     }
 
     /**
@@ -134,7 +134,7 @@ class Vps
     * @param bool $useAll
     */
     public static function unlock($vzid, $useAll) {
-        $response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=unlock&vps='.$vzid.'&module='.($useAll === true ? 'quickservers' : 'vps'))));
+        $response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=unlock&id='.$vzid.'&module='.($useAll === true ? 'quickservers' : 'vps'))));
     }
 
 	/**
