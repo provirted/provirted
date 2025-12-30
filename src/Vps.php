@@ -117,13 +117,33 @@ class Vps
 		self::$virtType = $virt;
 	}
 
-	/**
-	* returns an array containing information about the host server, vlans, and vps's
-	*
-	* @return array the host info
-	*/
-	public static function getHostInfo() {
-		$response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=get_info')));
+    /**
+    * locks a vps for backgrounded actions
+    *
+    * @param int|string $vzid
+    * @param bool $useAll
+    */
+    public static function lock($vzid, $useAll) {
+        $response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=lock&vps='.$vzid.'&module='.($useAll === true ? 'quickservers' : 'vps'))));
+    }
+
+    /**
+    * unlocks a vps
+    *
+    * @param int|string $vzid
+    * @param bool $useAll
+    */
+    public static function unlock($vzid, $useAll) {
+        $response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=unlock&vps='.$vzid.'&module='.($useAll === true ? 'quickservers' : 'vps'))));
+    }
+
+    /**
+    * returns an array containing information about the host server, vlans, and vps's
+    *
+    * @return array the host info
+    */
+    public static function getHostInfo() {
+        $response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=get_info')));
 		$host = json_decode($response, true);
 		if (!is_array($host) || !isset($host['vlans'])) {
 			self::getLogger()->error("invalid response getting host info:".$response);

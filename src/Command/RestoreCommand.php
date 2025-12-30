@@ -30,6 +30,7 @@ class RestoreCommand extends Command
                 InputOption::VALUE_REQUIRED,
                 'Type of Virtualization, kvm, openvz, virtuozzo, lxc'
             )
+            ->addOption('all', 'a', InputOption::VALUE_NONE, 'Use ALL available hardware resources')
             ->addArgument('source', InputArgument::REQUIRED, 'Source Backup Hostname to use')
             ->addArgument('name', InputArgument::REQUIRED, 'Backup Name to restore')
             ->addArgument('vzid', InputArgument::REQUIRED, 'VPS id/name to use')
@@ -42,6 +43,7 @@ class RestoreCommand extends Command
         $name   = $input->getArgument('name');
         $vzid   = $input->getArgument('vzid');
         $id     = $input->getArgument('id');
+        $useAll     = $input->getOption('all');
 
         $options = [
             'verbose' => count($input->getOption('verbose')),
@@ -68,6 +70,7 @@ class RestoreCommand extends Command
 
         $base = Vps::$base;
 
+        Vps::lock($id, $useAll);
         Vps::getLogger()->write(
             Vps::runCommand(
                 "{$base}/vps_swift_restore.sh {$source} {$name} {$vzid} && " .
@@ -75,6 +78,7 @@ class RestoreCommand extends Command
                 "|| curl --connect-timeout 60 --max-time 600 -k -d action=restore_status -d vps_id={$id} https://myvps.interserver.net/vps_queue.php"
             )
         );
+        Vps::unlock($id, $useAll);
 
         return Command::SUCCESS;
     }

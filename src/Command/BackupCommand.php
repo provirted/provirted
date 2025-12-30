@@ -18,6 +18,7 @@ class BackupCommand extends Command
             ->setDescription('Creates a Backup of a Virtual Machine.')
             ->addOption('verbose', 'v', InputOption::VALUE_NONE, 'Increase output verbosity')
             ->addOption('virt', 't', InputOption::VALUE_REQUIRED, 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')
+            ->addOption('all', 'a', InputOption::VALUE_NONE, 'Use ALL available hardware resources')
             ->addArgument('vzid', InputArgument::REQUIRED, 'VPS id/name to use')
             ->addArgument('id', InputArgument::REQUIRED, 'VPS ID')
             ->addArgument('email', InputArgument::REQUIRED, 'Email Address to notify when done');
@@ -28,6 +29,7 @@ class BackupCommand extends Command
         $vzid  = $input->getArgument('vzid');
         $id    = $input->getArgument('id');
         $email = $input->getArgument('email');
+        $useAll     = $input->getOption('all');
 
         Vps::init([
             'verbose' => $input->getOption('verbose') ? 1 : 0,
@@ -50,7 +52,9 @@ class BackupCommand extends Command
         }
 
         $emailEsc = escapeshellarg($email);
-        Vps::getLogger()->write(Vps::runCommand("/admin/swift/vpsbackup {$id} {$emailEsc}"));
+        Vps::lock($id, $useAll);
+        Vps::getLogger()->write(Vps::runCommand("/admin/swift/vpsbackup {$id} email {$emailEsc}"));
+        Vps::unlock($id, $useAll);
 
         return Command::SUCCESS;
     }
