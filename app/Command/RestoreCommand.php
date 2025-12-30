@@ -31,6 +31,8 @@ class RestoreCommand extends Command {
 
 	public function execute($source, $name, $vzid, $id) {
 		Vps::init($this->getOptions(), ['source' => $source, 'name' => $name, 'vzid' => $vzid, 'id' => $id]);
+        /** @var {\GetOptionKit\OptionResult|GetOptionKit\OptionCollection} */
+        $opts = $this->getOptions();
         $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
 		if (!Vps::isVirtualHost()) {
 			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
