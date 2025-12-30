@@ -18,6 +18,7 @@ class BackupCommand extends Command {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
 		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
+        $opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
 	}
 
     /** @param \CLIFramework\ArgInfoList $args */
@@ -29,6 +30,7 @@ class BackupCommand extends Command {
 
 	public function execute($vzid, $id, $email) {
 		Vps::init($this->getOptions(), ['vzid' => $vzid, 'id' => $id, 'email' => $email]);
+        $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
 		if (!Vps::isVirtualHost()) {
 			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
 			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
@@ -39,6 +41,8 @@ class BackupCommand extends Command {
 			return 1;
 		}
 		$email = escapeshellarg($email);
-		Vps::getLogger()->write(Vps::runCommand("/admin/swift/vpsbackup {$id} {$email}"));
+        Vps::lock($id, $useAll);
+		Vps::getLogger()->write(Vps::runCommand("/admin/swift/vpsbackup {$id} email {$email}"));
+        Vps::unlock($id, $useAll);
 	}
 }

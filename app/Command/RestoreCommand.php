@@ -18,6 +18,7 @@ class RestoreCommand extends Command {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
 		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
+        $opts->add('a|all', 'Use All Available HD, CPU Cores, and 70% RAM');
 	}
 
     /** @param \CLIFramework\ArgInfoList $args */
@@ -30,6 +31,7 @@ class RestoreCommand extends Command {
 
 	public function execute($source, $name, $vzid, $id) {
 		Vps::init($this->getOptions(), ['source' => $source, 'name' => $name, 'vzid' => $vzid, 'id' => $id]);
+        $useAll = array_key_exists('all', $opts->keys) && $opts->keys['all']->value == 1;
 		if (!Vps::isVirtualHost()) {
 			Vps::getLogger()->error("This machine does not appear to have any virtualization setup installed.");
 			Vps::getLogger()->error("Check the help to see how to prepare a virtualization environment.");
@@ -40,6 +42,8 @@ class RestoreCommand extends Command {
 			return 1;
 		}
 		$base = Vps::$base;
+        Vps::lock($id, $useAll);
 		Vps::getLogger()->write(Vps::runCommand("{$base}/vps_swift_restore.sh {$source} {$name} {$vzid} && curl --connect-timeout 60 --max-time 600 -k -d action=restore_status -d vps_id={$id} https://myvps.interserver.net/vps_queue.php || curl --connect-timeout 60 --max-time 600 -k -d action=restore_status -d vps_id={$id} https://myvps.interserver.net/vps_queue.php"));
+        Vps::unlock($id, $useAll);
 	}
 }
