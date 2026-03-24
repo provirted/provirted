@@ -17,7 +17,7 @@ class AddIpCommand extends Command {
 	public function options($opts) {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'the virtualization type, can be: kvm, openvz, virtuozzo, lxc, or auto (default)')->isa('string')->defaultValue('auto')->validValues(['auto', 'kvm','openvz','virtuozzo','lxc']);
+		$opts->add('t|virt:', 'the virtualization type, can be: kvm, openvz, virtuozzo, lxc, docker, or auto (default)')->isa('string')->defaultValue('auto')->validValues(['auto', 'kvm','openvz','virtuozzo','lxc','docker']);
 	}
 
     /** @param \CLIFramework\ArgInfoList $args */

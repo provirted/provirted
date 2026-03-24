@@ -18,7 +18,7 @@ class RebuildCommand extends Command {
 	public function options($opts) {
 		parent::options($opts);
 		$opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
+		$opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc, docker')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc','docker']);
 		$opts->add('f|force', 'Force rebuilding of all entries, otherwise leave entries that pass tests');
 		$opts->add('d|dry', 'perms a dry run, no files removed or written only messages saying they would have been');
         $opts->add('n|no-log', 'Disables the history storing for the command');

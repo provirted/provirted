@@ -39,7 +39,7 @@ HELP;
     public function options($opts) {
         parent::options($opts);
         $opts->add('v|verbose', 'increase output verbosity (stacked..use multiple times for even more output)')->isa('number')->incremental();
-        $opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc']);
+        $opts->add('t|virt:', 'Type of Virtualization, kvm, openvz, virtuozzo, lxc, docker')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc','docker']);
         $opts->add('m|mac:', 'MAC Address')->isa('string');
         $opts->add('o|order-id:', 'Order ID')->isa('number');
         $opts->add('i|add-ip+', 'Additional IPs')->multiple()->isa('string');
@@ -117,7 +117,7 @@ HELP;
             Vps::getLogger()->error("Invalid IP Address '{$ip}'.");
             return 1;
         }
-        if ($useAll == true && trim(`virsh list --all|grep qs`) != '') {
+        if ($useAll == true && Vps::getVirtType() != 'docker' && trim(`virsh list --all|grep qs`) != '') {
             Vps::getLogger()->error("There is already a VPS on this system so it cannot create one that uses all resources.");
             return 1;
         }
@@ -126,7 +126,9 @@ HELP;
         if ($mac == '' && is_numeric($orderId))
             $mac = Vps::convertIdToMac($orderId, $useAll); // use id to generate mac address
         $url = Vps::getUrl();
-        $kpartxOpts = preg_match('/sync/', Vps::runCommand("kpartx 2>&1")) ? '-s' : '';
+        $kpartxOpts = '';
+        if (Vps::getVirtType() != 'docker')
+            $kpartxOpts = preg_match('/sync/', Vps::runCommand("kpartx 2>&1")) ? '-s' : '';
         $ram = $ram * 1024; // convert ram to kb
         $hd = $hd * 1024; // convert hd to mb
         $device = '';
@@ -141,6 +143,8 @@ HELP;
         if (Vps::getVirtType() == 'kvm') {
             $pool = Vps::getPoolType();
             $device = $pool == 'zfs' ? '/vz/'.$vzid.'/os.qcow2' : '/dev/vz/'.$vzid;
+        } elseif (Vps::getVirtType() == 'docker') {
+            $pool = 'docker';
         }
         $webuzo = false;
         $cpanel = false;
@@ -195,8 +199,10 @@ HELP;
             $this->progress(90, $url, $orderId);
             Vps::setupRouting($vzid, $ip, $pool, $useAll, $orderId);
             $this->progress(95, $url, $orderId);
-            Vps::setupVnc($vzid, $clientIp);
-            Vps::vncScreenshot($vzid, $url);
+            if (Vps::getVirtType() != 'docker') {
+                Vps::setupVnc($vzid, $clientIp);
+                Vps::vncScreenshot($vzid, $url);
+            }
             $this->progress(100, $url, $orderId);
         }
     }
