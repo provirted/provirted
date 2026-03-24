@@ -117,7 +117,7 @@ HELP;
             Vps::getLogger()->error("Invalid IP Address '{$ip}'.");
             return 1;
         }
-        if ($useAll == true && Vps::getVirtType() != 'docker' && trim(`virsh list --all|grep qs`) != '') {
+        if ($useAll == true && !in_array(Vps::getVirtType(), ['docker', 'lxc']) && trim(`virsh list --all|grep qs`) != '') {
             Vps::getLogger()->error("There is already a VPS on this system so it cannot create one that uses all resources.");
             return 1;
         }
@@ -127,7 +127,7 @@ HELP;
             $mac = Vps::convertIdToMac($orderId, $useAll); // use id to generate mac address
         $url = Vps::getUrl();
         $kpartxOpts = '';
-        if (Vps::getVirtType() != 'docker')
+        if (!in_array(Vps::getVirtType(), ['docker', 'lxc']))
             $kpartxOpts = preg_match('/sync/', Vps::runCommand("kpartx 2>&1")) ? '-s' : '';
         $ram = $ram * 1024; // convert ram to kb
         $hd = $hd * 1024; // convert hd to mb
@@ -145,6 +145,8 @@ HELP;
             $device = $pool == 'zfs' ? '/vz/'.$vzid.'/os.qcow2' : '/dev/vz/'.$vzid;
         } elseif (Vps::getVirtType() == 'docker') {
             $pool = 'docker';
+        } elseif (Vps::getVirtType() == 'lxc') {
+            $pool = 'lxc';
         }
         $webuzo = false;
         $cpanel = false;
@@ -199,7 +201,7 @@ HELP;
             $this->progress(90, $url, $orderId);
             Vps::setupRouting($vzid, $ip, $pool, $useAll, $orderId);
             $this->progress(95, $url, $orderId);
-            if (Vps::getVirtType() != 'docker') {
+            if (!in_array(Vps::getVirtType(), ['docker', 'lxc'])) {
                 Vps::setupVnc($vzid, $clientIp);
                 Vps::vncScreenshot($vzid, $url);
             }

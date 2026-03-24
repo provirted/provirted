@@ -181,6 +181,8 @@ class Vps
 			return OpenVz::getRunningVps();
 		elseif (self::getVirtType() == 'docker')
 			return Docker::getRunningVps();
+		elseif (self::getVirtType() == 'lxc')
+			return Lxc::getRunningVps();
 	}
 
 	/**
@@ -197,6 +199,8 @@ class Vps
 			return OpenVz::getAllVps();
 		elseif (self::getVirtType() == 'docker')
 			return Docker::getAllVps();
+		elseif (self::getVirtType() == 'lxc')
+			return Lxc::getAllVps();
 	}
 
 	/**
@@ -215,6 +219,8 @@ class Vps
 			$vpsList = array_merge($vpsList, Kvm::getAllVps());
 		if (in_array('docker', $virts))
 			$vpsList = array_merge($vpsList, Docker::getAllVps());
+		if (in_array('lxc', $virts))
+			$vpsList = array_merge($vpsList, Lxc::getAllVps());
 		return $vpsList;
 	}
 
@@ -243,6 +249,8 @@ class Vps
 			return OpenVz::vpsExists($vzid);
 		elseif (self::getVirtType() == 'docker')
 			return Docker::vpsExists($vzid);
+		elseif (self::getVirtType() == 'lxc')
+			return Lxc::vpsExists($vzid);
 	}
 
 	public static function getUrl() {
@@ -260,6 +268,8 @@ class Vps
 			$pool = Kvm::getPoolType();
 		elseif (self::getVirtType() == 'docker')
 			$pool = 'docker';
+		elseif (self::getVirtType() == 'lxc')
+			$pool = 'lxc';
 		else
 			self::getLogger()->error("dont know how to handle virt type:".self::getVirtType());
 		return $pool;
@@ -274,6 +284,8 @@ class Vps
 	public static function getVpsMac($vzid) {
 		if (self::getVirtType() == 'docker')
 			return Docker::getVpsMac($vzid);
+		elseif (self::getVirtType() == 'lxc')
+			return Lxc::getVpsMac($vzid);
 		return Kvm::getVpsMac($vzid);
 	}
 
@@ -292,6 +304,8 @@ class Vps
 			return Kvm::getVpsIps($vzid);
 		elseif (self::getVirtType() == 'docker')
 			return Docker::getVpsIps($vzid);
+		elseif (self::getVirtType() == 'lxc')
+			return Lxc::getVpsIps($vzid);
 	}
 
 	/**
@@ -317,7 +331,7 @@ class Vps
 	public static function getVpsRemotes($vzid) {
 		if (self::getVirtType() == 'virtuozzo')
 			return Virtuozzo::getVpsRemotes($vzid);
-		elseif (self::getVirtType() == 'docker')
+		elseif (self::getVirtType() == 'docker' || self::getVirtType() == 'lxc')
 			return [];
 		else
 			return Kvm::getVpsRemotes($vzid);
@@ -332,7 +346,7 @@ class Vps
 	public static function getVncPort($vzid) {
 		if (self::getVirtType() == 'virtuozzo')
 			return Virtuozzo::getVncPort($vzid);
-		elseif (self::getVirtType() == 'docker')
+		elseif (self::getVirtType() == 'docker' || self::getVirtType() == 'lxc')
 			return '';
 		else
 			return Kvm::getVncPort($vzid);
@@ -395,6 +409,8 @@ class Vps
 			OpenVz::enableAutostart($vzid);
 		elseif (self::getVirtType() == 'docker')
 			Docker::enableAutostart($vzid);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::enableAutostart($vzid);
 	}
 
 	public static function disableAutostart($vzid) {
@@ -406,6 +422,8 @@ class Vps
 			OpenVz::disableAutostart($vzid);
 		elseif (self::getVirtType() == 'docker')
 			Docker::disableAutostart($vzid);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::disableAutostart($vzid);
 	}
 
 	public static function startVps($vzid) {
@@ -418,6 +436,8 @@ class Vps
 			OpenVz::startVps($vzid);
 		elseif (self::getVirtType() == 'docker')
 			Docker::startVps($vzid);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::startVps($vzid);
 		if (!self::isVpsRunning($vzid))
 			return 1;
 	}
@@ -431,6 +451,8 @@ class Vps
 			OpenVz::stopVps($vzid);
 		elseif (self::getVirtType() == 'docker')
 			Docker::stopVps($vzid, $fast);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::stopVps($vzid, $fast);
 	}
 
 	public static function resetVps($vzid) {
@@ -438,6 +460,8 @@ class Vps
 			Kvm::resetVps($vzid);
 		elseif (self::getVirtType() == 'docker')
 			Docker::resetVps($vzid);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::resetVps($vzid);
 	}
 
 	public static function restartVps($vzid) {
@@ -461,6 +485,8 @@ class Vps
 			OpenVz::destroyVps($vzid);
 		elseif (self::getVirtType() == 'docker')
 			Docker::destroyVps($vzid);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::destroyVps($vzid);
 	}
 
 	public static function addIp($vzid, $ip) {
@@ -472,6 +498,8 @@ class Vps
 			OpenVz::addIp($vzid, $ip);
 		elseif (self::getVirtType() == 'docker')
 			Docker::addIp($vzid, $ip);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::addIp($vzid, $ip);
 	}
 
 	public static function removeIp($vzid, $ip) {
@@ -483,6 +511,8 @@ class Vps
 			OpenVz::removeIp($vzid, $ip);
 		elseif (self::getVirtType() == 'docker')
 			Docker::removeIp($vzid, $ip);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::removeIp($vzid, $ip);
 	}
 
 	public static function changeIp($vzid, $ipOld, $ipNew) {
@@ -503,6 +533,8 @@ class Vps
 			OpenVz::setupRouting($vzid, $id);
 		elseif (self::getVirtType() == 'docker')
 			Docker::setupRouting($vzid, $ip, $pool, $useAll, $id);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::setupRouting($vzid, $ip, $pool, $useAll, $id);
 	}
 
 	public static function blockSmtp($vzid, $id) {
@@ -514,6 +546,8 @@ class Vps
 			OpenVz::blockSmtp($vzid, $id);
 		elseif (self::getVirtType() == 'docker')
 			Docker::blockSmtp($vzid, $id);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::blockSmtp($vzid, $id);
 	}
 
 	public static function setupStorage($vzid, $device, $pool, $hd) {
@@ -521,6 +555,8 @@ class Vps
 			Kvm::setupStorage($vzid, $device, $pool, $hd);
 		elseif (self::getVirtType() == 'docker')
 			Docker::setupStorage($vzid, $device, $pool, $hd);
+		elseif (self::getVirtType() == 'lxc')
+			Lxc::setupStorage($vzid, $device, $pool, $hd);
 	}
 
 	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $maxRam, $maxCpu, $useAll, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
@@ -532,6 +568,8 @@ class Vps
 			return OpenVz::defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit);
 		elseif (self::getVirtType() == 'docker')
 			return Docker::defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit);
+		elseif (self::getVirtType() == 'lxc')
+			return Lxc::defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit);
 		return true;
 	}
 
@@ -542,6 +580,8 @@ class Vps
 				Kvm::setupCgroups($vzid, $slices);
 			elseif (self::getVirtType() == 'docker')
 				Docker::setupCgroups($vzid, $slices);
+			elseif (self::getVirtType() == 'lxc')
+				Lxc::setupCgroups($vzid, $slices);
 		}
 	}
 
@@ -550,6 +590,8 @@ class Vps
 			return Kvm::installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit);
 		elseif (self::getVirtType() == 'docker')
 			return Docker::installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit);
+		elseif (self::getVirtType() == 'lxc')
+			return Lxc::installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit);
 		return true;
 	}
 
