@@ -28,6 +28,11 @@
 		"phpdocumentor/reflection": "*",
 		"phpdocumentor/reflection-docblock": "*"
 	},
+        "config": {
+                "platform": {
+                        "php": "7.4.33"
+                }
+        },
 	"autoload": {
 		"psr-4": {
 			"App\\": "app/"
