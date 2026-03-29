@@ -2,63 +2,71 @@
 
 Unified CLI tool for managing VPS across KVM, OpenVZ, Virtuozzo, LXC, and Docker.
 
+**Entry**: `provirted.php` → `app/Console.php` (extends `CLIFramework\Application`) → `runWithTry($argv)`.
+
 ## Build
 
 ```bash
 make              # composer update --no-dev + build phar
 make dev          # composer update with dev deps
-make phar         # build provirted.phar (no compression - breaks pvdisplay)
-make install      # symlink phar to /usr/local/bin and install bash completion
+make phar         # build provirted.phar (no compression — breaks pvdisplay)
+make install      # symlink phar to /usr/local/bin, install bash completion
+make completion   # regenerate bash completion script
+make internals    # regenerate app/Command/InternalsCommand from app/Resources/ templates
 make copy         # copy phar to ../vps_host_server and push
 ```
 
-The phar is built with: `php provirted.php archive --composer=composer.json --app-bootstrap --executable --no-compress provirted.phar`
+Phar build: `php provirted.php archive --composer=composer.json --app-bootstrap --executable --no-compress provirted.phar`
 
 ## PHP Version
 
-Target is **PHP 7.4**. Do not use PHP 8+ syntax (named arguments, match expressions, nullsafe operator `?->`, union types, enums, `str_contains()`, `str_starts_with()`, `str_ends_with()`, readonly properties, fibers, constructor promotion). The `composer.json` platform is locked to 7.4.33 to ensure dependency resolution stays compatible.
+**PHP 7.4 only.** Do not use: named arguments, `match`, nullsafe `?->`, union types, enums, `str_contains/starts_with/ends_with`, readonly, fibers, constructor promotion. `composer.json` platform locked to `7.4.33`.
 
 ## Code Style
 
-- **Indentation**: Tabs
-- **Brace style**: Opening brace on same line as class/method declaration
-- **Naming**: PascalCase classes, camelCase methods, `$camelCase` variables
-- **PHP-CS-Fixer**: `@PSR2` + `@PHP74Migration` rules (see `.php-cs-fixer.dist.php`)
-- No trailing commas in multiline arrays/params
+- **Indentation**: Tabs · **Braces**: same line · **Names**: `PascalCase` classes, `camelCase` methods, `$camelCase` vars
+- **PHP-CS-Fixer**: `@PSR2` + `@PHP74Migration` (see `.php-cs-fixer.dist.php`) — no trailing commas
+- Always `escapeshellarg()` every `$vzid`, `$ip`, `$password`, or user-supplied value before any shell invocation
 
 ## Architecture
 
-### Entry point
+**Core files**: `provirted.php` · `app/Console.php` · `app/Vps.php` · `app/Logger.php` · `app/XmlToArray.php`
 
-`provirted.php` loads composer autoload, instantiates `App\Console` (extends CLIFramework\Application), runs with argv.
+**Virt backends** (`app/Vps/`): `Kvm.php` (virsh/qemu-img/XML) · `Virtuozzo.php` (prlctl) · `OpenVz.php` (vzctl) · `Lxc.php` (lxc cli, br0) · `Docker.php` (docker cli, macvlan on br0)
 
-### Virtualization dispatch pattern
+**OS utilities** (`app/Os/`): `Os.php` (IP/RAM/CPU detection) · `Dhcpd.php` / `Dhcpd6.php` (DHCP config at `/etc/dhcp/dhcpd.vps`) · `Xinetd.php` (VNC proxy, `/etc/xinetd.d/`)
 
-`App\Vps` is the central facade. All operations dispatch to type-specific classes via if/elseif on `Vps::getVirtType()`:
+**Help topics** (`app/Topic/`): `BasicTopic.php` · `ExamplesTopic.php` — extend `CLIFramework\Topic\BaseTopic`
+
+### Virt dispatch pattern
+
+`App\Vps` is the facade. All operations dispatch via `if/elseif` on `Vps::getVirtType()`:
 
 ```
 Vps::startVps($vzid)
-  -> Kvm::startVps($vzid)       # /usr/bin/virsh
+  -> Kvm::startVps($vzid)        # /usr/bin/virsh
   -> Virtuozzo::startVps($vzid)  # /usr/bin/prlctl
   -> OpenVz::startVps($vzid)     # /usr/sbin/vzctl
   -> Lxc::startVps($vzid)        # /usr/bin/lxc
   -> Docker::startVps($vzid)     # /usr/bin/docker
 ```
 
-Virt type is auto-detected from binary existence in `Vps::$virtBins`, or forced with `--virt` option.
+Virt type auto-detected from binary existence in `Vps::$virtBins`, or forced with `--virt`.
 
 ### Adding a new virt type
 
-1. Create `app/Vps/NewType.php` with static methods matching the interface (see `Kvm.php` or `Lxc.php`)
+1. Create `app/Vps/NewType.php` with static methods matching `Kvm.php` / `Lxc.php` interface
 2. Add `elseif` branches in every dispatch method in `app/Vps.php`
-3. Add the binary path to `Vps::$virtBins`
-4. Add to `--virt` option validValues in command files
+3. Add binary path to `Vps::$virtBins`
+4. Add to `--virt` `validValues` in all command files
 
 ### Command structure
 
-Commands live in `app/Command/` and extend `CLIFramework\Command`. Subcommands use subdirectories (e.g., `CdCommand/EnableCommand.php`).
+Commands in `app/Command/`, extend `CLIFramework\Command`. Subcommand groups use subdirs:
+`app/Command/CdCommand/` · `app/Command/VncCommand/` · `app/Command/SnapshotCommand/` · `app/Command/HistoryCommand/` · `app/Command/CronCommand/`
 
-Standard command pattern:
+Standard command skeleton:
+
 ```php
 class FooCommand extends Command {
     public function brief() { return "Description"; }
@@ -68,38 +76,45 @@ class FooCommand extends Command {
         $opts->add('t|virt:', '...')->isa('string')->validValues(['kvm','openvz','virtuozzo','lxc','docker']);
     }
     public function arguments($args) {
-        $args->add('vzid')->desc('...')->isa('string');
+        $args->add('vzid')->desc('...')->isa('string')->validValues([Vps::class, 'getAllVpsAllVirts']);
     }
     public function execute($vzid) {
         Vps::init($this->getOptions(), ['vzid' => $vzid]);
-        // ...
+        if (!Vps::isVirtualHost()) { Vps::getLogger()->error("No virtualization found."); return 1; }
+        if (!Vps::vpsExists($vzid)) { Vps::getLogger()->error("VPS '{$vzid}' not found."); return 1; }
+        // dispatch via Vps::getVirtType()
     }
 }
 ```
 
-### Key classes
+Container gate: `in_array(Vps::getVirtType(), ['docker', 'lxc'])` — skip VNC, CD-ROM, virsh XML, storage pools, kpartx.
 
-- `App\Vps` - Facade, dispatches to virt-specific classes, runs commands via `proc_open()`
-- `App\Vps\Kvm` - KVM/libvirt (virsh, qemu-img, XML definitions)
-- `App\Vps\Docker` - Docker containers as lightweight VPS (macvlan on br0)
-- `App\Vps\Lxc` - LXC/LXD containers (bridged on br0)
-- `App\Vps\OpenVz` - OpenVZ (vzctl)
-- `App\Vps\Virtuozzo` - Virtuozzo (prlctl)
-- `App\Os\Os` - Host OS utilities (IP detection, RAM, CPU)
-- `App\Os\Dhcpd` / `Dhcpd6` - DHCP configuration management
-- `App\Os\Xinetd` - VNC proxy service management
-- `App\Console` - CLI app bootstrap, command groups, logger init
+### Runtime data
 
-### Container types (Docker/LXC) vs VM types (KVM)
-
-Docker and LXC skip KVM-specific operations: VNC, CD-ROM, virsh XML, storage pools, kpartx. Check `in_array(Vps::getVirtType(), ['docker', 'lxc'])` to gate these.
-
-## Directories on target hosts
-
-- `/root/cpaneldirect` - `Vps::$base`, scripts and tools directory
-- `/vz/` - VM/container storage root
-- `~/.provirted/` - Runtime data (host.json, history.json)
+- `Vps::$base` → `/root/cpaneldirect` (host scripts dir, e.g. `tclimit`, `vps_refresh_vnc.sh`)
+- `/vz/` — VM/container storage root; `/vz/templates/` — Docker Dockerfiles and OVZ templates
+- `~/.provirted/history.json` — command history (written in `app/Console.php::finish()`)
+- `~/.provirted/docker.json` — Docker network config (macvlan/bridge, read by `Docker::getConfig()`)
+- `~/.provirted/host.json` — cached host info used by `Vps::getHostInfo()`
 
 ## No tests
 
-There is no test suite. `TestCommand.php` is a diagnostic command, not automated tests.
+`app/Command/TestCommand.php` is a diagnostic command, not an automated test suite.
+
+<!-- caliber:managed:pre-commit -->
+## Before Committing
+
+Run `caliber refresh` before creating git commits to keep docs in sync with code changes.
+After it completes, stage any modified doc files before committing:
+
+```bash
+caliber refresh && git add CLAUDE.md .claude/ .cursor/ .github/copilot-instructions.md AGENTS.md CALIBER_LEARNINGS.md 2>/dev/null
+```
+<!-- /caliber:managed:pre-commit -->
+
+<!-- caliber:managed:learnings -->
+## Session Learnings
+
+Read `CALIBER_LEARNINGS.md` for patterns and anti-patterns learned from previous sessions.
+These are auto-extracted from real tool usage — treat them as project-specific rules.
+<!-- /caliber:managed:learnings -->

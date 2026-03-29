@@ -1,6 +1,8 @@
 .idea
-.claude
 composer.lock
 vendor
 .php-cs-fixer.cache
 .ai
+
+# Caliber local state
+.caliber/
