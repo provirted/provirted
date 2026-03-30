@@ -32,6 +32,14 @@
                 {
                         "type": "git",
                         "url": "https://github.com/detain/CodeGen"
+                },
+                {
+                        "type": "git",
+                        "url": "https://github.com/detain/GetOptionKit"
+                },
+                {
+                        "type": "git",
+                        "url": "https://github.com/detain/CLIFramework"
                 }
         ],
         "config": {
