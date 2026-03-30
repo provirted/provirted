@@ -28,6 +28,12 @@
 		"phpdocumentor/reflection": "*",
 		"phpdocumentor/reflection-docblock": "*"
 	},
+        "repositories": [
+                {
+                        "type": "git",
+                        "url": "https://github.com/detain/CodeGen"
+                }
+        ],
         "config": {
                 "platform": {
                         "php": "7.4.33"

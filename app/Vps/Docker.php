@@ -19,7 +19,8 @@ class Docker
 		if (self::$config !== null)
 			return self::$config;
 		$defaults = [
-			'network_mode' => 'macvlan',
+            //'network_mode' => 'macvlan',
+			'network_mode' => 'bridge',
 			'macvlan_interface' => 'br0',
 			'macvlan_subnet' => '',
 			'macvlan_gateway' => '',
