@@ -24,7 +24,7 @@ class Docker
 			'macvlan_interface' => 'br0',
 			'macvlan_subnet' => '',
 			'macvlan_gateway' => '',
-			'bridge_network' => 'provirted',
+			'bridge_network' => 'provirted-bridge',
 		];
 		$configFile = $_SERVER['HOME'].'/.provirted/docker.json';
 		if (file_exists($configFile)) {
