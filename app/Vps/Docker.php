@@ -23,6 +23,8 @@ class Docker
 			'network_mode' => 'bridge',
 			'macvlan_interface' => 'br0',
 			'bridge_network' => 'provirted-bridge',
+			'restart_policy' => 'on-failure:5',
+			'container_command' => 'sleep infinity',
 		];
 		$configFile = $_SERVER['HOME'].'/.provirted/docker.json';
 		if (file_exists($configFile)) {
@@ -45,6 +47,27 @@ class Docker
 		$config = self::getConfig();
 		self::$networkMode = $config['network_mode'];
 		return self::$networkMode;
+	}
+
+	/**
+	* gets docker restart policy for containers
+	*
+	* @return string
+	*/
+	protected static function getRestartPolicy() {
+		$config = self::getConfig();
+		$policy = isset($config['restart_policy']) ? trim($config['restart_policy']) : '';
+		return $policy != '' ? $policy : 'on-failure:5';
+	}
+
+	/**
+	* gets command to run as container pid 1
+	*
+	* @return string
+	*/
+	protected static function getContainerCommand() {
+		$config = self::getConfig();
+		return isset($config['container_command']) ? trim($config['container_command']) : 'sleep infinity';
 	}
 
 	/**
@@ -411,11 +434,14 @@ class Docker
 			$cmd .= " --device-write-bps /dev/sda:{$ioLimit}";
 		if ($iopsLimit !== false)
 			$cmd .= " --device-write-iops /dev/sda:{$iopsLimit}";
-		$cmd .= " --restart unless-stopped";
+		$cmd .= " --restart ".escapeshellarg(self::getRestartPolicy());
 		$cmd .= " --privileged";
 		$cmd .= " --tmpfs /run --tmpfs /run/lock";
 		$cmd .= " -v /sys/fs/cgroup:/sys/fs/cgroup:ro";
 		$cmd .= " {$image}";
+		$containerCommand = self::getContainerCommand();
+		if ($containerCommand != '')
+			$cmd .= " /bin/sh -lc ".escapeshellarg($containerCommand);
 		Vps::getLogger()->debug('Running: '.$cmd);
 		Vps::getLogger()->write(Vps::runCommand($cmd, $return));
 		if ($return != 0) {
@@ -525,7 +551,7 @@ class Docker
 	public static function enableAutostart($vzid) {
 		Vps::getLogger()->info('Enabling Automatic Restart of the Container');
 		$vzid = escapeshellarg($vzid);
-		Vps::getLogger()->write(Vps::runCommand("docker update --restart unless-stopped {$vzid}"));
+		Vps::getLogger()->write(Vps::runCommand("docker update --restart ".escapeshellarg(self::getRestartPolicy())." {$vzid}"));
 	}
 
 	/**

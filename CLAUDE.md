@@ -94,7 +94,7 @@ Container gate: `in_array(Vps::getVirtType(), ['docker', 'lxc'])` — skip VNC, 
 - `Vps::$base` → `/root/cpaneldirect` (host scripts dir, e.g. `tclimit`, `vps_refresh_vnc.sh`)
 - `/vz/` — VM/container storage root; `/vz/templates/` — Docker Dockerfiles and OVZ templates
 - `~/.provirted/history.json` — command history (written in `app/Console.php::finish()`)
-- `~/.provirted/docker.json` — Docker network config (macvlan/bridge, read by `Docker::getConfig()`)
+- `~/.provirted/docker.json` — Docker network config (macvlan/bridge, read by `Docker::getConfig()`); keys: `network_mode`, `macvlan_interface`, `bridge_network`, `restart_policy` (default `on-failure:5`), `container_command` (default `sleep infinity`)
 - `~/.provirted/host.json` — cached host info used by `Vps::getHostInfo()`
 
 ## No tests
