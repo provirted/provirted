@@ -22,6 +22,8 @@ class Docker
             //'network_mode' => 'macvlan',
 			'network_mode' => 'bridge',
 			'macvlan_interface' => 'br0',
+			'macvlan_subnet' => '',
+			'macvlan_gateway' => '',
 			'bridge_network' => 'provirted-bridge',
 		];
 		$configFile = $_SERVER['HOME'].'/.provirted/docker.json';
@@ -52,33 +54,21 @@ class Docker
 	*
 	* @return string the network name
 	*/
-	public static function ensureNetwork($requiredIp = '') {
+	public static function ensureNetwork() {
 		$config = self::getConfig();
 		$mode = self::getNetworkMode();
-		$networkConfig = self::getNetworkConfigForIp($requiredIp);
 		if ($mode == 'macvlan') {
 			$networkName = 'provirted-macvlan';
 			$exists = trim(Vps::runCommand("docker network ls --filter name={$networkName} --format '{{.Name}}'"));
 			if ($exists == '') {
 				Vps::getLogger()->info('Creating macvlan network on '.$config['macvlan_interface']);
 				$cmd = "docker network create -d macvlan --attachable";
-				if (isset($networkConfig['subnet']) && $networkConfig['subnet'] != '')
-					$cmd .= " --subnet={$networkConfig['subnet']}";
-				if (isset($networkConfig['gateway']) && $networkConfig['gateway'] != '')
-					$cmd .= " --gateway={$networkConfig['gateway']}";
+				if ($config['macvlan_subnet'] != '')
+					$cmd .= " --subnet={$config['macvlan_subnet']}";
+				if ($config['macvlan_gateway'] != '')
+					$cmd .= " --gateway={$config['macvlan_gateway']}";
 				$cmd .= " -o parent={$config['macvlan_interface']} {$networkName}";
 				Vps::getLogger()->write(Vps::runCommand($cmd));
-			} elseif ($requiredIp != '') {
-				$subnets = self::getNetworkSubnets($networkName);
-				$inSubnet = false;
-				foreach ($subnets as $subnet) {
-					if (self::ipInCidr($requiredIp, $subnet)) {
-						$inSubnet = true;
-						break;
-					}
-				}
-				if ($inSubnet === false)
-					Vps::getLogger()->error("Macvlan network {$networkName} does not include {$requiredIp}; using Docker-assigned IP instead. Check host VLAN data for this IP.");
 			}
 			return $networkName;
 		} else {
@@ -87,111 +77,10 @@ class Docker
 			if ($exists == '') {
 				Vps::getLogger()->info('Creating bridge network '.$networkName);
 				$cmd = "docker network create {$networkName}";
-				if (isset($networkConfig['subnet']) && $networkConfig['subnet'] != '')
-					$cmd .= " --subnet={$networkConfig['subnet']}";
-				if (isset($networkConfig['gateway']) && $networkConfig['gateway'] != '')
-					$cmd .= " --gateway={$networkConfig['gateway']}";
 				Vps::getLogger()->write(Vps::runCommand($cmd));
-			} elseif ($requiredIp != '') {
-				$subnets = self::getNetworkSubnets($networkName);
-				$inSubnet = false;
-				foreach ($subnets as $subnet) {
-					if (self::ipInCidr($requiredIp, $subnet)) {
-						$inSubnet = true;
-						break;
-					}
-				}
-				if ($inSubnet === false) {
-					Vps::getLogger()->error("Bridge network {$networkName} does not include {$requiredIp}; using Docker-assigned IP instead. Check host VLAN data for this IP.");
-				}
 			}
 			return $networkName;
 		}
-	}
-
-	/**
-	* resolve network subnet and gateway from host VLAN data for a given IP
-	*
-	* @param string $requiredIp
-	* @return array
-	*/
-	protected static function getNetworkConfigForIp($requiredIp) {
-		if ($requiredIp == '' || $requiredIp == 'none')
-			return [];
-		$host = Vps::getHostInfo();
-		if (!is_array($host) || !isset($host['vlans']) || !is_array($host['vlans']))
-			return [];
-		foreach ($host['vlans'] as $vlan) {
-			if (!isset($vlan['network_ip']) || !isset($vlan['netmask']) || !isset($vlan['hostmin']))
-				continue;
-			$cidrBits = self::netmaskToCidr($vlan['netmask']);
-			if ($cidrBits === false)
-				continue;
-			$cidr = $vlan['network_ip'].'/'.$cidrBits;
-			if (self::ipInCidr($requiredIp, $cidr))
-				return ['subnet' => $cidr, 'gateway' => $vlan['hostmin']];
-		}
-		return [];
-	}
-
-	/**
-	* convert IPv4 netmask to CIDR bits
-	*
-	* @param string $netmask
-	* @return int|false
-	*/
-	protected static function netmaskToCidr($netmask) {
-		$long = ip2long($netmask);
-		if ($long === false)
-			return false;
-		$binary = decbin($long & 0xFFFFFFFF);
-		$bits = substr_count($binary, '1');
-		if (str_repeat('1', $bits).str_repeat('0', 32 - $bits) !== $binary)
-			return false;
-		return $bits;
-	}
-
-	/**
-	* returns configured subnets for a docker network
-	*
-	* @param string $networkName
-	* @return array
-	*/
-	protected static function getNetworkSubnets($networkName) {
-		$networkName = escapeshellarg($networkName);
-		$json = trim(Vps::runCommand("docker network inspect {$networkName} 2>/dev/null"));
-		$data = json_decode($json, true);
-		if (!is_array($data) || !isset($data[0]['IPAM']['Config']) || !is_array($data[0]['IPAM']['Config']))
-			return [];
-		$subnets = [];
-		foreach ($data[0]['IPAM']['Config'] as $entry) {
-			if (isset($entry['Subnet']) && $entry['Subnet'] != '')
-				$subnets[] = $entry['Subnet'];
-		}
-		return $subnets;
-	}
-
-	/**
-	* checks if an IP belongs to a CIDR subnet
-	*
-	* @param string $ip
-	* @param string $cidr
-	* @return bool
-	*/
-	protected static function ipInCidr($ip, $cidr) {
-		if (strpos($cidr, '/') === false)
-			return false;
-		list($subnet, $bits) = explode('/', $cidr, 2);
-		$ipLong = ip2long($ip);
-		$subnetLong = ip2long($subnet);
-		$bits = intval($bits);
-		if ($ipLong === false || $subnetLong === false || $bits < 0 || $bits > 32)
-			return false;
-		if ($bits == 0)
-			return true;
-		$mask = -1 << (32 - $bits);
-		$mask = $mask & 0xFFFFFFFF;
-		return ($ipLong & $mask) == ($subnetLong & $mask);
 	}
 
 	/**
@@ -361,26 +250,14 @@ class Docker
 			Vps::getLogger()->unIndent();
 			return false;
 		}
-		$network = self::ensureNetwork($ip);
+		$network = self::ensureNetwork();
 		$ramMb = intval($ram / 1024);
 		$cmd = "docker create";
 		$cmd .= " --name ".escapeshellarg($vzid);
 		$cmd .= " --hostname ".escapeshellarg($hostname);
 		$cmd .= " --network {$network}";
-		if ($ip != '' && $ip != 'none') {
-			$subnets = self::getNetworkSubnets($network);
-			$canUseIp = false;
-			foreach ($subnets as $subnet) {
-				if (self::ipInCidr($ip, $subnet)) {
-					$canUseIp = true;
-					break;
-				}
-			}
-			if ($canUseIp)
-				$cmd .= " --ip ".escapeshellarg($ip);
-			else
-				Vps::getLogger()->error("Skipping --ip {$ip} because it is outside {$network} subnets. Check host VLAN data for this IP.");
-		}
+		if (self::getNetworkMode() == 'bridge' && $ip != '' && $ip != 'none')
+			$cmd .= " --ip ".escapeshellarg($ip);
 		if ($mac != '')
 			$cmd .= " --mac-address ".escapeshellarg($mac);
 		if ($ramMb > 0)
