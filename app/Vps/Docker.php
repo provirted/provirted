@@ -384,13 +384,14 @@ class Docker
 	* @param int $maxRam unused for docker
 	* @param int $maxCpu unused for docker
 	* @param bool $useAll use all resources
+	* @param string $password root password (passed as ROOT_PASSWORD env var)
 	* @param string|false $ipv6Ip IPv6 address
 	* @param string|false $ipv6Range IPv6 range
 	* @param int|false $ioLimit IO limit in bytes/s
 	* @param int|false $iopsLimit IOPS limit
 	* @return bool
 	*/
-	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
+	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
 		Vps::getLogger()->info('Creating Docker Container Definition');
 		Vps::getLogger()->indent();
 		if (self::vpsExists($vzid)) {
@@ -434,6 +435,8 @@ class Docker
 			$cmd .= " --device-write-bps /dev/sda:{$ioLimit}";
 		if ($iopsLimit !== false)
 			$cmd .= " --device-write-iops /dev/sda:{$iopsLimit}";
+		if ($password != '')
+			$cmd .= " -e ROOT_PASSWORD=".escapeshellarg($password);
 		$cmd .= " --restart ".escapeshellarg(self::getRestartPolicy());
 		$cmd .= " --privileged";
 		$cmd .= " --tmpfs /run --tmpfs /run/lock";
@@ -627,13 +630,7 @@ class Docker
 	*/
 	public static function installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit) {
 		// Template resolution happens in defineVps via resolveTemplate
-		// If a password was specified, try to set it inside the container
-		if ($password != '' && Vps::isVpsRunning($vzid)) {
-			$escaped = escapeshellarg($vzid);
-			$password = escapeshellarg($password);
-			Vps::getLogger()->info('Setting root password in container');
-			Vps::getLogger()->write(Vps::runCommand("docker exec {$escaped} bash -c \"echo root:{$password} | chpasswd\" 2>/dev/null"));
-		}
+		// Password is set via ROOT_PASSWORD env var in defineVps
 		return true;
 	}
 
