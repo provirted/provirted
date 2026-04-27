@@ -32,7 +32,7 @@ Phar build: `php provirted.php archive --composer=composer.json --app-bootstrap 
 
 **Core files**: `provirted.php` · `app/Console.php` · `app/Vps.php` · `app/Logger.php` · `app/XmlToArray.php`
 
-**Virt backends** (`app/Vps/`): `Kvm.php` (virsh/qemu-img/XML) · `Virtuozzo.php` (prlctl) · `OpenVz.php` (vzctl) · `Lxc.php` (lxc cli, br0) · `Docker.php` (docker cli, macvlan on br0)
+**Virt backends** (`app/Vps/`): `Kvm.php` (virsh/qemu-img/XML) · `Virtuozzo.php` (prlctl) · `OpenVz.php` (vzctl) · `Lxc.php` (lxc cli, br0) · `Docker.php` (docker cli, bridge/macvlan; VLAN-aware network selection via `host.json`)
 
 **OS utilities** (`app/Os/`): `Os.php` (IP/RAM/CPU detection) · `Dhcpd.php` / `Dhcpd6.php` (DHCP config at `/etc/dhcp/dhcpd.vps`) · `Xinetd.php` (VNC proxy, `/etc/xinetd.d/`)
 
@@ -118,3 +118,20 @@ caliber refresh && git add CLAUDE.md .claude/ .cursor/ .github/copilot-instructi
 Read `CALIBER_LEARNINGS.md` for patterns and anti-patterns learned from previous sessions.
 These are auto-extracted from real tool usage — treat them as project-specific rules.
 <!-- /caliber:managed:learnings -->
+
+<!-- caliber:managed:model-config -->
+## Model Configuration
+
+Recommended default: `claude-sonnet-4-6` with high effort (stronger reasoning; higher cost and latency than smaller models).
+Smaller/faster models trade quality for speed and cost — pick what fits the task.
+Pin your choice (`/model` in Claude Code, or `CALIBER_MODEL` when using Caliber with an API provider) so upstream default changes do not silently change behavior.
+
+<!-- /caliber:managed:model-config -->
+
+<!-- caliber:managed:sync -->
+## Context Sync
+
+This project uses [Caliber](https://github.com/caliber-ai-org/ai-setup) to keep AI agent configs in sync across Claude Code, Cursor, Copilot, and Codex.
+Configs update automatically before each commit via `/home/my/.nvm/versions/node/v24.15.0/bin/caliber refresh`.
+If the pre-commit hook is not set up, run `/setup-caliber` to configure everything automatically.
+<!-- /caliber:managed:sync -->

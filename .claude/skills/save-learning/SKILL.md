@@ -24,11 +24,11 @@ will be applied in all future sessions on this project.
 3. Show the refined learning to the user and ask for confirmation
 4. If confirmed, run:
    ```bash
-   caliber learn add "<refined learning>"
+   /home/my/.nvm/versions/node/v24.15.0/bin/caliber learn add "<refined learning>"
    ```
    For personal preferences (not project-level), add `--personal`:
    ```bash
-   caliber learn add --personal "<refined learning>"
+   /home/my/.nvm/versions/node/v24.15.0/bin/caliber learn add --personal "<refined learning>"
    ```
 5. Stage the learnings file for the next commit:
    ```bash
@@ -42,7 +42,7 @@ User: "when developing features, push to next branch not master, remember it"
 -> "I'll save this as a project learning:
     **[convention]** Push feature commits to the \`next\` branch, not \`master\`
     Save for future sessions?"
--> If yes: run `caliber learn add "**[convention]** Push feature commits to the next branch, not master"`
+-> If yes: run `/home/my/.nvm/versions/node/v24.15.0/bin/caliber learn add "**[convention]** Push feature commits to the next branch, not master"`
 -> Run `git add CALIBER_LEARNINGS.md`
 
 User: "always use bun instead of npm"
