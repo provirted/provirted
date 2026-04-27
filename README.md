@@ -44,8 +44,6 @@ vps_swift_restore.sh
 vps_kvm_password_manual.php
 vps_kvm_setup_password_clear.sh
 
-vps_kvm_screenshot.sh
-vps_kvm_screenshot_swift.sh
 vps_refresh_vnc.sh
 
 ## Commands

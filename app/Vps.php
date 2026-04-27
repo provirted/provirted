@@ -377,29 +377,6 @@ class Vps
 		Xinetd::restart();
 	}
 
-	public static function vncScreenshot($vzid, $url) {
-		if (in_array(self::getVirtType(), ['kvm', 'virtuozzo'])) {
-			$vncPort = self::getVncPort($vzid);
-			$vncPort -= 5900;
-			$base = self::$base;
-//			self::getLogger()->write(self::runCommand("{$base}/vps_kvm_screenshot.sh \"{$vncPort}\" \"{$url}?action=screenshot&name={$vzid}\";"));
-//			sleep(2);
-//			self::getLogger()->write(self::runCommand("{$base}/vps_kvm_screenshot.sh \"{$vncPort}\" \"{$url}?action=screenshot&name={$vzid}\";"));
-			$vncPort += 5900;
-		}
-	}
-
-	public static function vncScreenshotSwift($vzid) {
-		if (in_array(self::getVirtType(), ['kvm', 'virtuozzo']) && self::isVpsRunning($vzid)) {
-			$vncPort = self::getVncPort($vzid);
-			$base = self::$base;
-			if ($vncPort != '' && intval($vncPort) > 1000) {
-				$vncPort -= 5900;
-//				self::getLogger()->write(self::runCommand("{$base}/vps_kvm_screenshot_swift.sh {$vncPort} {$vzid}"));
-			}
-		}
-	}
-
 	public static function enableAutostart($vzid) {
 		if (self::getVirtType() == 'kvm')
 			Kvm::enableAutostart($vzid);
@@ -470,7 +447,6 @@ class Vps
 	}
 
 	public static function deleteVps($vzid) {
-		self::vncScreenshotSwift($vzid);
 		self::stopVps($vzid);
 		self::disableAutostart($vzid);
 	}

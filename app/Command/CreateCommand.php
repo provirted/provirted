@@ -203,7 +203,6 @@ HELP;
             $this->progress(95, $url, $orderId);
             if (!in_array(Vps::getVirtType(), ['docker', 'lxc'])) {
                 Vps::setupVnc($vzid, $clientIp);
-                Vps::vncScreenshot($vzid, $url);
             }
             $this->progress(100, $url, $orderId);
         }
