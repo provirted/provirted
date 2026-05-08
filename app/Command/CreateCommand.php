@@ -178,7 +178,7 @@ HELP;
             if (Vps::getVirtType() == 'kvm') {
                 $password = escapeshellarg($password);
                 $hostname = escapeshellarg($hostname);
-                $cmd = "virt-customize -d {$vzid} --root-password password:{$password} --hostname {$hostname}";
+                $cmd = "virt-customize --no-network -d {$vzid} --root-password password:{$password} --hostname {$hostname}";
                 if ($sshKey != false) {
                     $sshKey = escapeshellarg($sshKey);
                     $cmd .= " --ssh-inject root:string:{$sshKey}";

@@ -117,7 +117,7 @@ class UpdateCommand extends Command
 			} elseif (Vps::getVirtType() == 'openvz') {
 				Vps::getLogger()->write(Vps::runCommand("vzctl set {$vzid} --save --setmode restart --userpasswd {$username}:{$password}"));
 			} elseif (Vps::getVirtType() == 'kvm') {
-				Vps::getLogger()->write(Vps::runCommand("virt-customize -d {$vzid} --root-password password:{$password};"));
+				Vps::getLogger()->write(Vps::runCommand("virt-customize --no-network -d {$vzid} --root-password password:{$password};"));
 			}
 		}
 		if ($updateHostname === true) {
@@ -128,7 +128,7 @@ class UpdateCommand extends Command
 			} elseif (Vps::getVirtType() == 'openvz') {
 				Vps::getLogger()->write(Vps::runCommand("vzctl set {$vzid} --save --setmode restart --hostname {$hostname}"));
 			} elseif (Vps::getVirtType() == 'kvm') {
-				Vps::getLogger()->write(Vps::runCommand("virt-customize -d {$vzid} --hostname {$hostname};"));
+				Vps::getLogger()->write(Vps::runCommand("virt-customize --no-network -d {$vzid} --hostname {$hostname};"));
 			}
 		}
 		if ($updateCpu === true || $updateRam === true || $updateTimezone === true) {
