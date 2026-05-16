@@ -37,6 +37,8 @@ class AddIpCommand extends Command {
 			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
 			return 1;
 		}
-		Vps::addIp($vzid, $ip);
+		if (Vps::addIp($vzid, $ip) === false) {
+			return 1;
+		}
 	}
 }

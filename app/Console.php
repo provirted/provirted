@@ -40,7 +40,9 @@ class Console extends Application
                 @mkdir($_SERVER['HOME'].'/.provirted', 0750, true);
                 $historyFilePath = $_SERVER['HOME'] . '/.provirted/history.json';
                 $historyLine = json_encode($history) . PHP_EOL;
-                file_put_contents($historyFilePath, $historyLine, FILE_APPEND);
+                if (@file_put_contents($historyFilePath, $historyLine, FILE_APPEND) === false) {
+                    fprintf(STDERR, 'WARN: could not append history to '.$historyFilePath.' (check permissions)'.PHP_EOL);
+                }
             }
         }
     }

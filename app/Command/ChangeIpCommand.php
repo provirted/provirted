@@ -38,6 +38,8 @@ class ChangeIpCommand extends Command {
 			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
 			return 1;
 		}
-		Vps::changeIp($vzid, $ip, $ipNew);
+		if (Vps::changeIp($vzid, $ip, $ipNew) === false) {
+			return 1;
+		}
 	}
 }

@@ -32,6 +32,8 @@ class Logger extends \CLIFramework\Logger
     * @param array $data output string or array for command data
     */
     public function addHistory($data) {
+    	if ($this->enabled === false)
+    		return;
     	if (count($this->history) > 0 && $this->history[count($this->history) - 1]['type'] == $data['type'] && in_array($data['type'], ['output', 'error']))
     		$this->history[count($this->history) - 1]['text'] .= $data['text'];
     	else
@@ -56,14 +58,14 @@ class Logger extends \CLIFramework\Logger
     }
     
     /**
-    * enables the storing and updating of the hsitory log    * 
+    * enables the storing and updating of the history log
     */
     public function enableHistory() {
         $this->enabled = true;
     }
-    
+
     /**
-    * disables the storing and updating of the hsitory log    * 
+    * disables the storing and updating of the history log
     */
     public function disableHistory() {
         $this->enabled = false;
@@ -86,15 +88,35 @@ class Logger extends \CLIFramework\Logger
         fprintf(STDERR, $msg.PHP_EOL);
     }
 
-    public function __call($method, $args) {
-        $msg = $args[0];
-        $indent = isset($args[1]) ? $args[1] : 0;
-        $level = $this->logLevels[$method];
+    /**
+     * Internal helper for level-gated logging. Used by the explicit level methods below.
+     */
+    protected function log($levelName, $msg) {
+        if (!isset($this->logLevels[$levelName]))
+            return;
+        $level = $this->logLevels[$levelName];
         if ($level > $this->level) // do not print.
             return;
         if ($this->indent)
             $this->write(str_repeat($this->indentCharacter, $this->indent));
-        $this->writeln(is_object($msg) || is_array($msg) ? print_r($msg, 1) : $msg); // detect object
+        $this->writeln(is_object($msg) || is_array($msg) ? print_r($msg, 1) : $msg);
+    }
+
+    public function critical($msg) { $this->log('critical', $msg); }
+    public function warn($msg)     { $this->log('warn', $msg); }
+    public function info($msg)     { $this->log('info', $msg); }
+    public function info2($msg)    { $this->log('info2', $msg); }
+    public function debug($msg)    { $this->log('debug', $msg); }
+    public function debug2($msg)   { $this->log('debug2', $msg); }
+
+    /**
+     * Backwards-compatible magic dispatch for any future log level names.
+     * Existing code that called $logger->someLevel() still works.
+     */
+    public function __call($method, $args) {
+        if (!isset($this->logLevels[$method]))
+            return;
+        $this->log($method, isset($args[0]) ? $args[0] : '');
     }
 
     /**

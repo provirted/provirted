@@ -8,11 +8,19 @@ class Os
 
     /**
     * returns the systems main ip address
-    * @return string the main ip address
+    * @return string the main ip address, or empty string on failure
     */
 	public static function getIp() {
 		$defaultRoute = trim(Vps::runCommand('ip route list | grep "^default" | sed s#"^default.*dev "#""#g | head -n 1 | cut -d" " -f1'));
-		$ip = trim(Vps::runCommand("ifconfig {$defaultRoute} | grep inet | grep -v inet6 | awk '{ print $2 }' | cut -d: -f2"));
+		if (!preg_match('/^[A-Za-z0-9._-]+$/', $defaultRoute)) {
+			Vps::getLogger()->error("Could not detect default route device (got '{$defaultRoute}')");
+			return '';
+		}
+		$ip = trim(Vps::runCommand("ifconfig ".escapeshellarg($defaultRoute)." | grep inet | grep -v inet6 | awk '{ print $2 }' | cut -d: -f2"));
+		if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+			Vps::getLogger()->error("Could not detect IP for {$defaultRoute} (got '{$ip}')");
+			return '';
+		}
 		return $ip;
 	}
 
@@ -42,12 +50,19 @@ class Os
 
     /**
     * gets the total system memory in kB
-    * @return float total system memory in kb
+    * @return float total system memory in kb, 0 on failure
     */
 	public static function getTotalRam() {
-		preg_match('/^MemTotal:\s+(\d+)\skB/', file_get_contents('/proc/meminfo'), $matches);
-		$ram = floatval($matches[1]);
-		return $ram;
+		$meminfo = @file_get_contents('/proc/meminfo');
+		if ($meminfo === false) {
+			Vps::getLogger()->error('Could not read /proc/meminfo');
+			return 0.0;
+		}
+		if (!preg_match('/^MemTotal:\s+(\d+)\skB/', $meminfo, $matches)) {
+			Vps::getLogger()->error('No MemTotal line in /proc/meminfo');
+			return 0.0;
+		}
+		return floatval($matches[1]);
 	}
 
     /**
@@ -66,7 +81,15 @@ class Os
     *
     */
 	public static function getCpuCount() {
-		preg_match('/CPU\(s\):\s+(\d+)/', Vps::runCommand("lscpu"), $matches);
+		$out = Vps::runCommand("lscpu", $return);
+		if ($return != 0) {
+			Vps::getLogger()->error("lscpu failed (exit {$return})");
+			return 0;
+		}
+		if (!preg_match('/CPU\(s\):\s+(\d+)/', $out, $matches)) {
+			Vps::getLogger()->error('Could not detect CPU count from lscpu output');
+			return 0;
+		}
 		return intval($matches[1]);
 	}
 

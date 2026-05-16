@@ -292,7 +292,7 @@ class Docker
 	*/
 	public static function getVpsMac($vzid) {
 		$vps = self::getVps($vzid);
-		if ($vps === false)
+		if ($vps === false || !isset($vps['NetworkSettings']['Networks']) || !is_array($vps['NetworkSettings']['Networks']))
 			return '';
 		$networks = $vps['NetworkSettings']['Networks'];
 		foreach ($networks as $netName => $netInfo) {
@@ -310,7 +310,7 @@ class Docker
 	*/
 	public static function getVpsIps($vzid) {
 		$vps = self::getVps($vzid);
-		if ($vps === false)
+		if ($vps === false || !isset($vps['NetworkSettings']['Networks']) || !is_array($vps['NetworkSettings']['Networks']))
 			return [];
 		$ips = [];
 		$networks = $vps['NetworkSettings']['Networks'];
@@ -329,6 +329,10 @@ class Docker
 	* @return bool
 	*/
 	public static function addIp($vzid, $ip) {
+		if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+			Vps::getLogger()->error("Invalid IP address '{$ip}'; refusing to modify container.");
+			return false;
+		}
 		$ips = self::getVpsIps($vzid);
 		if (in_array($ip, $ips)) {
 			Vps::getLogger()->error('Skipping adding IP '.$ip.' to '.$vzid.', it already exists in the container.');
@@ -336,9 +340,14 @@ class Docker
 		}
 		Vps::getLogger()->info('Adding IP '.$ip.' to '.$vzid);
 		$network = self::ensureNetwork($ip);
-		$vzid = escapeshellarg($vzid);
-		$ip = escapeshellarg($ip);
-		Vps::getLogger()->write(Vps::runCommand("docker network connect --ip {$ip} {$network} {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		$ipArg = escapeshellarg($ip);
+		$networkArg = escapeshellarg($network);
+		Vps::getLogger()->write(Vps::runCommand("docker network connect --ip {$ipArg} {$networkArg} {$vzidArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("docker network connect failed for {$vzid} (exit {$return})");
+			return false;
+		}
 		return true;
 	}
 
@@ -349,7 +358,36 @@ class Docker
 	* @param string $ip IP address
 	* @return bool
 	*/
+	/**
+	* Changes one of a container's IP addresses by removing the old and adding the new.
+	*
+	* @param string $vzid container name
+	* @param string $ipOld existing IP to drop
+	* @param string $ipNew replacement IP
+	* @return bool true on success, false on failure
+	*/
+	public static function changeIp($vzid, $ipOld, $ipNew) {
+		if ($ipOld === $ipNew) {
+			Vps::getLogger()->error("changeIp called with identical old and new IP '{$ipOld}'; nothing to do.");
+			return false;
+		}
+		Vps::getLogger()->info("Changing IP on {$vzid} from {$ipOld} to {$ipNew}");
+		if (!self::removeIp($vzid, $ipOld)) {
+			Vps::getLogger()->error("removeIp({$ipOld}) failed; aborting changeIp.");
+			return false;
+		}
+		if (!self::addIp($vzid, $ipNew)) {
+			Vps::getLogger()->error("addIp({$ipNew}) failed after removing {$ipOld}; container may now have fewer IPs than before.");
+			return false;
+		}
+		return true;
+	}
+
 	public static function removeIp($vzid, $ip) {
+		if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+			Vps::getLogger()->error("Invalid IP address '{$ip}'; refusing to modify container.");
+			return false;
+		}
 		$ips = self::getVpsIps($vzid);
 		if (!in_array($ip, $ips)) {
 			Vps::getLogger()->error('Skipping removing IP '.$ip.' from '.$vzid.', it does not appear to exist in the container.');
@@ -357,14 +395,24 @@ class Docker
 		}
 		Vps::getLogger()->info('Removing IP '.$ip.' from '.$vzid);
 		$vps = self::getVps($vzid);
+		if ($vps === false || !isset($vps['NetworkSettings']['Networks']) || !is_array($vps['NetworkSettings']['Networks'])) {
+			Vps::getLogger()->error("Could not read network state for {$vzid}");
+			return false;
+		}
 		$networks = $vps['NetworkSettings']['Networks'];
 		foreach ($networks as $netName => $netInfo) {
 			if (isset($netInfo['IPAddress']) && $netInfo['IPAddress'] == $ip) {
-				$vzid = escapeshellarg($vzid);
-				Vps::getLogger()->write(Vps::runCommand("docker network disconnect {$netName} {$vzid}"));
+				$vzidArg = escapeshellarg($vzid);
+				$netNameArg = escapeshellarg($netName);
+				Vps::getLogger()->write(Vps::runCommand("docker network disconnect {$netNameArg} {$vzidArg}", $return));
+				if ($return != 0) {
+					Vps::getLogger()->error("docker network disconnect failed for {$vzid}/{$netName} (exit {$return})");
+					return false;
+				}
 				return true;
 			}
 		}
+		Vps::getLogger()->error("Could not find network with IP {$ip} on container {$vzid}");
 		return false;
 	}
 
@@ -496,8 +544,10 @@ class Docker
 	*/
 	public static function startVps($vzid) {
 		Vps::getLogger()->info('Starting the Container');
-		$vzid = escapeshellarg($vzid);
-		Vps::getLogger()->write(Vps::runCommand("docker start {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("docker start {$vzidArg}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("docker start failed for {$vzid} (exit {$return})");
 	}
 
 	/**
@@ -507,8 +557,10 @@ class Docker
 	*/
 	public static function resetVps($vzid) {
 		Vps::getLogger()->info('Resetting the Container');
-		$vzid = escapeshellarg($vzid);
-		Vps::getLogger()->write(Vps::runCommand("docker restart {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("docker restart {$vzidArg}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("docker restart failed for {$vzid} (exit {$return})");
 	}
 
 	/**
@@ -538,12 +590,14 @@ class Docker
 	*/
 	public static function destroyVps($vzid) {
 		if (Vps::isVpsRunning($vzid)) {
-			Vps::getLogger()->write("Container is running, please stop first.\n");
+			Vps::getLogger()->error("Container '{$vzid}' is running, please stop it first.");
 			return;
 		}
 		$escaped = escapeshellarg($vzid);
 		Vps::getLogger()->info('Removing container and volumes');
-		Vps::getLogger()->write(Vps::runCommand("docker rm -v {$escaped}"));
+		Vps::getLogger()->write(Vps::runCommand("docker rm -v {$escaped}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("docker rm failed for {$vzid} (exit {$return})");
 	}
 
 	/**
@@ -592,9 +646,14 @@ class Docker
 	*/
 	public static function setupRouting($vzid, $ip, $pool, $useAll, $id) {
 		Vps::getLogger()->info('Setting up Routing');
-		$base = Vps::$base;
 		if ($ip != 'none') {
-			Vps::getLogger()->write(Vps::runCommand("{$base}/tclimit {$ip};"));
+			$tclimit = Vps::requireScript('tclimit');
+			if ($tclimit !== false) {
+				$ipArg = escapeshellarg($ip);
+				Vps::getLogger()->write(Vps::runCommand(escapeshellarg($tclimit)." {$ipArg}", $return));
+				if ($return != 0)
+					Vps::getLogger()->error("tclimit failed for {$ip} (exit {$return})");
+			}
 			self::blockSmtp($vzid, $id);
 		}
 	}

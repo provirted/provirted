@@ -9,10 +9,16 @@ use App\Vps;
 class Dhcpd
 {
 	/**
-	* is the service running
+	* is the service running (only reports true if both the binary exists and a process is running)
 	* @return bool
 	*/
 	public static function isRunning() {
+		// pidof exits non-zero if no process is running OR if the binary doesn't exist; differentiate the cases
+		Vps::getLogger()->write(Vps::runCommand('command -v dhcpd >/dev/null 2>&1', $return));
+		if ($return != 0) {
+			Vps::getLogger()->error('dhcpd binary not found in PATH');
+			return false;
+		}
 		Vps::getLogger()->write(Vps::runCommand('pidof dhcpd >/dev/null', $return));
 		return $return == 0;
 	}
@@ -23,7 +29,15 @@ class Dhcpd
 	*/
 	public static function getHosts() {
 		$dhcpFile = self::getFile();
-		$dhcpData = file_get_contents($dhcpFile);
+		if (!file_exists($dhcpFile)) {
+			Vps::getLogger()->error("DHCP hosts file not found: {$dhcpFile}");
+			return [];
+		}
+		$dhcpData = @file_get_contents($dhcpFile);
+		if ($dhcpData === false) {
+			Vps::getLogger()->error("Could not read DHCP hosts file: {$dhcpFile} (check permissions)");
+			return [];
+		}
 		$hosts = [];
 		if (preg_match_all('/^\s*host\s+(?P<host>\S+)\s+{\s+hardware\s+ethernet\s+(?P<mac>\S+)\s*;\s*fixed-address\s+(?P<ip>\S+)\s*;\s*}/msuU', $dhcpData, $matches)) {
 			foreach ($matches[0] as $idx => $match) {
@@ -65,16 +79,54 @@ class Dhcpd
 	* @param string $vzid hostname
 	* @param string $ip ip address
 	* @param string $mac mac address
+	* @return bool indicates success
 	*/
 	public static function setup($vzid, $ip, $mac) {
 		Vps::getLogger()->info('Setting up DHCPD');
-		$mac = Vps::getVpsMac($vzid);
+		if (!preg_match('/^[A-Za-z0-9._-]+$/', $vzid)) {
+			Vps::getLogger()->error("Invalid vzid '{$vzid}' for DHCP entry; refusing.");
+			return false;
+		}
+		if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+			Vps::getLogger()->error("Invalid IPv4 '{$ip}' for DHCP entry; refusing.");
+			return false;
+		}
+		$resolvedMac = Vps::getVpsMac($vzid);
+		if ($resolvedMac != '') {
+			$mac = $resolvedMac;
+		}
+		if (!preg_match('/^[0-9A-Fa-f:]+$/', $mac) || $mac == '') {
+			Vps::getLogger()->error("Invalid MAC '{$mac}' for {$vzid}; refusing to write DHCP entry.");
+			return false;
+		}
 		$dhcpVps = self::getFile();
-		Vps::getLogger()->write(Vps::runCommand("/bin/cp -f {$dhcpVps} {$dhcpVps}.backup;"));
-		Vps::getLogger()->write(Vps::runCommand("grep -v -e \"host {$vzid} \" -e \"fixed-address {$ip};\" {$dhcpVps}.backup > {$dhcpVps}"));
-		Vps::getLogger()->write(Vps::runCommand("echo \"host {$vzid} { hardware ethernet {$mac}; fixed-address {$ip}; }\" >> {$dhcpVps}"));
-		Vps::getLogger()->write(Vps::runCommand("rm -f {$dhcpVps}.backup;"));
+		if (!is_writable(dirname($dhcpVps))) {
+			Vps::getLogger()->error("DHCP hosts directory not writable: ".dirname($dhcpVps));
+			return false;
+		}
+		$dhcpVpsArg = escapeshellarg($dhcpVps);
+		$backupPath = $dhcpVps.'.backup';
+		$backupArg = escapeshellarg($backupPath);
+		Vps::getLogger()->write(Vps::runCommand("/bin/cp -f {$dhcpVpsArg} {$backupArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("Could not back up {$dhcpVps} (exit {$return})");
+			return false;
+		}
+		Vps::getLogger()->write(Vps::runCommand("grep -v -e \"host {$vzid} \" -e \"fixed-address {$ip};\" {$backupArg} > {$dhcpVpsArg}", $return));
+		if ($return > 1) {
+			Vps::getLogger()->error("grep filter of {$dhcpVps} failed (exit {$return}); restoring backup");
+			Vps::getLogger()->write(Vps::runCommand("/bin/cp -f {$backupArg} {$dhcpVpsArg}"));
+			Vps::getLogger()->write(Vps::runCommand("rm -f {$backupArg}"));
+			return false;
+		}
+		Vps::getLogger()->write(Vps::runCommand("echo \"host {$vzid} { hardware ethernet {$mac}; fixed-address {$ip}; }\" >> {$dhcpVpsArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("Could not append host entry to {$dhcpVps} (exit {$return})");
+			return false;
+		}
+		Vps::getLogger()->write(Vps::runCommand("rm -f {$backupArg}"));
 		self::restart();
+		return true;
 	}
 
 	/**
@@ -114,10 +166,14 @@ shared-network myvpn {
 }
 ';
 		$file .= '}';
-		if ($display === false)
-			file_put_contents(self::getConfFile(), $file);
-		else
+		if ($display === false) {
+			if (@file_put_contents(self::getConfFile(), $file) === false) {
+				Vps::getLogger()->error('Could not write '.self::getConfFile().' (check permissions)');
+				return false;
+			}
+		} else {
 			Vps::getLogger()->write('cat > '.self::getConfFile().' <<EOF'.PHP_EOL.$file.PHP_EOL.'EOF'.PHP_EOL);
+		}
         return true;
 	}
 
@@ -129,7 +185,7 @@ shared-network myvpn {
 	public static function rebuildHosts($display = false) {
 		$host = Vps::getHostInfo();
         if (!is_array($host) || !isset($host['vps'])) {
-            Vps::getLogger()->write('There appears to have been a problem with the host info, perhaps try again?'.PHP_EOL);
+            Vps::getLogger()->error('There appears to have been a problem with the host info, perhaps try again?');
             return false;
         }
 		$lines = [];
@@ -137,29 +193,55 @@ shared-network myvpn {
 			if ($vps['ip'] != 'none' && $vps['ip'] != '' && $vps['mac'] != '' && $vps['vzid'] != '0')
 				$lines[] = 'host '.$vps['vzid'].' { hardware ethernet '.$vps['mac'].'; fixed-address '.$vps['ip'].'; }';
 		$file = implode(PHP_EOL, $lines);
-		file_put_contents(self::getFile(), $file);
-		if ($display === false)
-			file_put_contents(self::getFile(), $file);
-		else
+		if ($display === false) {
+			if (@file_put_contents(self::getFile(), $file) === false) {
+				Vps::getLogger()->error('Could not write '.self::getFile().' (check permissions)');
+				return false;
+			}
+		} else {
 			Vps::getLogger()->write('cat > '.self::getFile().' <<EOF'.PHP_EOL.$file.PHP_EOL.'EOF'.PHP_EOL);
+		}
         return true;
 	}
 
 	/**
 	* removes a host from dhcp
 	* @param string $vzid
+	* @return bool indicates success
 	*/
 	public static function remove($vzid) {
+		if (!preg_match('/^[A-Za-z0-9._-]+$/', $vzid)) {
+			Vps::getLogger()->error("Invalid vzid '{$vzid}' for DHCP removal; refusing.");
+			return false;
+		}
 		$dhcpVps = self::getFile();
-		Vps::getLogger()->write(Vps::runCommand("sed s#\"^host {$vzid} .*$\"#\"\"#g -i {$dhcpVps}"));
+		if (!file_exists($dhcpVps)) {
+			Vps::getLogger()->error("DHCP hosts file not found: {$dhcpVps}");
+			return false;
+		}
+		$dhcpVpsArg = escapeshellarg($dhcpVps);
+		Vps::getLogger()->write(Vps::runCommand("sed s#\"^host {$vzid} .*$\"#\"\"#g -i {$dhcpVpsArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("sed -i failed on {$dhcpVps} (exit {$return})");
+			return false;
+		}
 		self::restart();
+		return true;
 	}
 
 	/**
 	* restarts the service
+	* @return bool indicates success
 	*/
 	public static function restart() {
 		$dhcpService = self::getService();
-		Vps::getLogger()->write(Vps::runCommand("systemctl restart {$dhcpService} 2>/dev/null || service {$dhcpService} restart 2>/dev/null || /etc/init.d/{$dhcpService} restart 2>/dev/null"));
+		$svcArg = escapeshellarg($dhcpService);
+		$svcEsc = escapeshellcmd($dhcpService);
+		Vps::getLogger()->write(Vps::runCommand("systemctl restart {$svcArg} 2>/dev/null || service {$svcArg} restart 2>/dev/null || /etc/init.d/{$svcEsc} restart 2>/dev/null", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("Could not restart {$dhcpService} (exit {$return}); DHCP changes may not be live yet");
+			return false;
+		}
+		return true;
 	}
 }

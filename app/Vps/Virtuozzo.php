@@ -4,41 +4,71 @@ namespace App\Vps;
 use App\Vps;
 use App\Os\Xinetd;
 
+/**
+* Virtuozzo virtualization backend (prlctl). See `.claude/rules/virt-backends.md`
+* for the contract every public static method on this class must satisfy.
+*/
 class Virtuozzo
 {
 	public static $vpsList;
 
 
+	/**
+	* Returns the list of running Virtuozzo containers/VMs by name.
+	* @return array
+	*/
 	public static function getRunningVps() {
-		return explode("\n", trim(Vps::runCommand("prlctl list -o name|grep -v NAME")));
+		$out = trim(Vps::runCommand("prlctl list -o name|grep -v NAME", $return));
+		if ($return > 1) {
+			Vps::getLogger()->error("prlctl list failed (exit {$return})");
+			return [];
+		}
+		return $out == '' ? [] : explode("\n", $out);
 	}
 
 	public static function getAllVps() {
-		return explode("\n", trim(Vps::runCommand("prlctl list -a -o name|grep -v NAME")));
+		$out = trim(Vps::runCommand("prlctl list -a -o name|grep -v NAME", $return));
+		if ($return > 1) {
+			Vps::getLogger()->error("prlctl list -a failed (exit {$return})");
+			return [];
+		}
+		return $out == '' ? [] : explode("\n", $out);
 	}
 
 	public static function vpsExists($vzid) {
-		$vzid = escapeshellarg($vzid);
-		Vps::getLogger()->write(Vps::runCommand("prlctl status {$vzid} >/dev/null 2>&1", $return));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("prlctl status {$vzidArg} >/dev/null 2>&1", $return));
 		return $return == 0;
 	}
 
 	public static function getList() {
-		$vpsList = json_decode(Vps::runCommand("prlctl list --all --info --full --json"), true);
+		$vpsList = json_decode(Vps::runCommand("prlctl list --all --info --full --json", $return), true);
+		if ($return != 0 || !is_array($vpsList)) {
+			Vps::getLogger()->error("prlctl list --json failed or returned invalid JSON (exit {$return})");
+			return [];
+		}
 		return $vpsList;
 	}
 
 	public static function getVps($vzid) {
-		$vps = json_decode(Vps::runCommand("prlctl list --all --info --full --json {$vzid}"), true);
-		return is_null($vps) ? false : $vps[0];
+		$vzidArg = escapeshellarg($vzid);
+		$vps = json_decode(Vps::runCommand("prlctl list --all --info --full --json {$vzidArg}", $return), true);
+		if ($return != 0 || !is_array($vps) || count($vps) == 0) {
+			return false;
+		}
+		return $vps[0];
 	}
 
 	public static function getVpsIps($vzid, $simple = false) {
 		$vps = self::getVps($vzid);
+		if ($vps === false || !isset($vps['Hardware']['venet0']['ips'])) {
+			return $simple === false ? [] : [];
+		}
 		$ips = explode(' ', trim($vps['Hardware']['venet0']['ips']));
 		$out = [];
 		$matchups = [];
 		foreach ($ips as $idx => $ip) {
+			if ($ip == '') continue;
 			$simpleIp = $ip;
 			// strip the /netmask (ie 127.0.0.1/255.255.255.0 becomes 127.0.0.1)
 			if (preg_match('/^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/', $ip, $matches)) {
@@ -51,101 +81,149 @@ class Virtuozzo
 	}
 
 	public static function addIp($vzid, $ip) {
-		$ips = self::getVpsIps($vzid);
 		if (preg_match('/^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/', $ip, $matches))
 			$ip = $matches[1];
+		if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+			Vps::getLogger()->error("Invalid IPv4 address '{$ip}'; refusing to modify VPS.");
+			return false;
+		}
+		$ips = self::getVpsIps($vzid);
 		if (array_key_exists($ip, $ips)) {
 			Vps::getLogger()->error('Skipping adding IP '.$ip.' to '.$vzid.', it already exists in the VPS.');
 			return false;
 		}
-		Vps::getLogger()->error('Adding IP '.$ip.' to '.$vzid);
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --ipadd {$ip}"));
+		Vps::getLogger()->info('Adding IP '.$ip.' to '.$vzid);
+		$vzidArg = escapeshellarg($vzid);
+		$ipArg = escapeshellarg($ip);
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --ipadd {$ipArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("prlctl set --ipadd failed for {$vzid} (exit {$return})");
+			return false;
+		}
 		return true;
 	}
 
 	public static function removeIp($vzid, $ip) {
-		$ips = self::getVpsIps($vzid);
 		if (preg_match('/^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/', $ip, $matches))
 			$ip = $matches[1];
-		if (!array_key_exists($ip, $ips)) {
-			Vps::getLogger()->error('Skipping removing IP '.$ip.' from '.$vzid.', it does not appear to exit in the VPS.');
+		if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+			Vps::getLogger()->error("Invalid IPv4 address '{$ip}'; refusing to modify VPS.");
 			return false;
 		}
-		Vps::getLogger()->error('Removing IP '.$ip.' from '.$vzid);
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --ipdel {$ips[$ip]}"));
+		$ips = self::getVpsIps($vzid);
+		if (!array_key_exists($ip, $ips)) {
+			Vps::getLogger()->error('Skipping removing IP '.$ip.' from '.$vzid.', it does not appear to exist in the VPS.');
+			return false;
+		}
+		Vps::getLogger()->info('Removing IP '.$ip.' from '.$vzid);
+		$vzidArg = escapeshellarg($vzid);
+		$ipArg = escapeshellarg($ips[$ip]);
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --ipdel {$ipArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("prlctl set --ipdel failed for {$vzid} (exit {$return})");
+			return false;
+		}
 		return true;
 	}
 
 	public static function changeIp($vzid, $ipOld, $ipNew) {
+		if (!filter_var($ipNew, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+			Vps::getLogger()->error("Invalid new IPv4 address '{$ipNew}'; refusing to modify VPS.");
+			return false;
+		}
 		$ips = self::getVpsIps($vzid, true);
 		if (in_array($ipNew, $ips)) {
-			Vps::getLogger()->error('The New IP '.$ipNew.' alreaday exists as one of the IPs ('.implode(',', $ips).') for VPS '.$vzid);
+			Vps::getLogger()->error('The New IP '.$ipNew.' already exists as one of the IPs ('.implode(',', $ips).') for VPS '.$vzid);
 			return false;
 		}
 		if (!in_array($ipOld, $ips)) {
-			Vps::getLogger()->error('The Old IP '.$ipOld.' does not alreaday exist as one of the IPs ('.implode(',', $ips).') for VPS '.$vzid);
+			Vps::getLogger()->error('The Old IP '.$ipOld.' does not already exist as one of the IPs ('.implode(',', $ips).') for VPS '.$vzid);
 			return false;
 		}
+		$vzidArg = escapeshellarg($vzid);
+		$ipOldArg = escapeshellarg($ipOld);
+		$ipNewArg = escapeshellarg($ipNew);
 		if ($ipOld == $ips[0] && count($ips) > 1) {
 			Vps::getLogger()->info("Changing IP from '{$ipOld}' to '{$ipNew}'");
 			Vps::getLogger()->info("Removing all existing IPs and adding '{$ipNew}' to ensure it is still a primary IP");
-			Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --ipdel all --ipadd {$ipNew}"));
-			for ($x = 1; $x <= count($ips); $x++) {
+			Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --ipdel all --ipadd {$ipNewArg}", $return));
+			if ($return != 0)
+				Vps::getLogger()->error("prlctl set --ipdel all --ipadd failed for {$vzid} (exit {$return})");
+			for ($x = 1; $x < count($ips); $x++) {
 				Vps::getLogger()->info("Adding IP {$ips[$x]} to {$vzid}");
-				Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --ipadd {$ips[$x]}"));
+				$extraArg = escapeshellarg($ips[$x]);
+				Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --ipadd {$extraArg}", $return));
+				if ($return != 0)
+					Vps::getLogger()->error("prlctl set --ipadd {$ips[$x]} failed for {$vzid} (exit {$return})");
 			}
 		} else {
-			Vps::getLogger()->info("Removing Old IP {$ipOld} to {$vzid}");
-			Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --ipdel {$ipOld}"));
+			Vps::getLogger()->info("Removing Old IP {$ipOld} from {$vzid}");
+			Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --ipdel {$ipOldArg}", $return));
+			if ($return != 0)
+				Vps::getLogger()->error("prlctl set --ipdel failed for {$vzid} (exit {$return})");
 			Vps::getLogger()->info("Adding New IP {$ipNew} to {$vzid}");
-			Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --ipadd {$ipNew}"));
+			Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --ipadd {$ipNewArg}", $return));
+			if ($return != 0)
+				Vps::getLogger()->error("prlctl set --ipadd failed for {$vzid} (exit {$return})");
 		}
 		Vps::getLogger()->info("Restarting Virtual Machine '{$vzid}'");
-		Vps::getLogger()->write(Vps::runCommand("prlctl restart {$vzid}"));
+		Vps::getLogger()->write(Vps::runCommand("prlctl restart {$vzidArg}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("prlctl restart failed for {$vzid} (exit {$return})");
 		return true;
 	}
 
 	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $ram, $cpu, $hd, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
 		$ram = ceil($ram / 1024);
-		Vps::getLogger()->write(Vps::runCommand("prlctl create {$vzid} --vmtype ct --ostemplate {$template}", $return));
-		$passsword = escapeshellarg($password);
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --userpasswd root:{$password}"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --memsize {$ram}M"));
+		$vzidArg = escapeshellarg($vzid);
+		$templateArg = escapeshellarg($template);
+		$passwordArg = escapeshellarg('root:'.$password);
+		$hostnameArg = escapeshellarg($hostname);
+		$ipArg = escapeshellarg($ip);
+		Vps::getLogger()->write(Vps::runCommand("prlctl create {$vzidArg} --vmtype ct --ostemplate {$templateArg}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("prlctl create failed for {$vzid} (exit {$return})");
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --userpasswd {$passwordArg}"));
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --memsize {$ram}M"));
 		//commented out because virtuozzo says "WARNING: Use of swap significantly slows down both the container and the node."
-		//Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --swappages 1G"));
-		$hostname = escapeshellarg($hostname);
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --hostname {$hostname}"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --device-add net --type routed --ipadd {$ip} --nameserver 8.8.8.8"));
-		foreach ($extraIps as $extraIp)
-			Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --ipadd {$extraIp}/255.255.255.0 2>&1"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --cpus {$cpu}"));
-		$cpuUnits = 1500 * $cpu;
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --cpuunits {$cpuUnits}"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --device-set hdd0 --size {$hd}"));
+		//Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --swappages 1G"));
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --hostname {$hostnameArg}"));
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --device-add net --type routed --ipadd {$ipArg} --nameserver 8.8.8.8"));
+		foreach ($extraIps as $extraIp) {
+			$extraIpArg = escapeshellarg($extraIp.'/255.255.255.0');
+			Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --ipadd {$extraIpArg} 2>&1"));
+		}
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --cpus ".intval($cpu)));
+		$cpuUnits = 1500 * intval($cpu);
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --cpuunits {$cpuUnits}"));
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --device-set hdd0 --size ".intval($hd)));
 		$hdG = ceil($hd / 1024);
-		Vps::getLogger()->write(Vps::runCommand("vzctl set {$vzid}  --diskspace {$hdG}G --save"));
+		Vps::getLogger()->write(Vps::runCommand("vzctl set {$vzidArg}  --diskspace {$hdG}G --save"));
         if ($ioLimit !== false)
-            Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --iolimit {$ioLimit}"));
+            Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --iolimit ".intval($ioLimit)));
         if ($iopsLimit !== false)
-            Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --iopslimit {$iopsLimit}"));
+            Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --iopslimit ".intval($iopsLimit)));
 		return $return == 0;
 	}
 
 	public static function getVpsRemotes($vzid) {
 		$vps = self::getVps($vzid);
 		$remotes = [];
-		if (isset($vps['Remote display']['port']))
+		if (is_array($vps) && isset($vps['Remote display']['port']))
 			$remotes['vnc'] = intval($vps['Remote display']['port']);
 		if (count($remotes) == 0) {
 			$vpsList = self::getList();
 			$ports = [];
-			foreach ($vpsList as $vps)
-				if (isset($vps['Remote display']['port']))
-					$ports[] = intval($vps['Remote display']['port']);
+			foreach ($vpsList as $vpsEntry)
+				if (isset($vpsEntry['Remote display']['port']))
+					$ports[] = intval($vpsEntry['Remote display']['port']);
 			$vncPort = 5901;
 			while (in_array($vncPort, $ports))
 				$vncPort++;
-			Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --vnc-mode manual --vnc-port {$vncPort} --vnc-nopasswd --vnc-address 127.0.0.1"));
+			$vzidArg = escapeshellarg($vzid);
+			Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --vnc-mode manual --vnc-port {$vncPort} --vnc-nopasswd --vnc-address 127.0.0.1", $return));
+			if ($return != 0)
+				Vps::getLogger()->error("prlctl set --vnc-mode failed for {$vzid} (exit {$return})");
 			$remotes['vnc'] = $vncPort;
 		}
 		return $remotes;
@@ -166,28 +244,47 @@ class Virtuozzo
 
 	public static function enableAutostart($vzid) {
 		Vps::getLogger()->info('Enabling On-Boot Automatic Startup of the VPS');
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --onboot yes --autostart on"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --enable"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --onboot yes --autostart on", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("prlctl set --onboot yes failed for {$vzid} (exit {$return})");
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --enable", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("prlctl set --enable failed for {$vzid} (exit {$return})");
 	}
 
 	public static function disableAutostart($vzid) {
 		Vps::getLogger()->info('Disabling On-Boot Automatic Startup of the VPS');
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --onboot no --autostart off"));
-		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzid} --disable"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --onboot no --autostart off", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("prlctl set --onboot no failed for {$vzid} (exit {$return})");
+		Vps::getLogger()->write(Vps::runCommand("prlctl set {$vzidArg} --disable", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("prlctl set --disable failed for {$vzid} (exit {$return})");
 	}
 
 	public static function startVps($vzid) {
 		Vps::getLogger()->info('Starting the VPS');
-		Vps::getLogger()->write(Vps::runCommand("prlctl start {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("prlctl start {$vzidArg}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("prlctl start failed for {$vzid} (exit {$return})");
 	}
 
 	public static function stopVps($vzid, $fast = false) {
 		Vps::getLogger()->info('Stopping the VPS');
-		Vps::getLogger()->write(Vps::runCommand("prlctl stop {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("prlctl stop {$vzidArg}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("prlctl stop failed for {$vzid} (exit {$return})");
 	}
 
 	public static function destroyVps($vzid) {
-		Vps::getLogger()->write(Vps::runCommand("prlctl delete {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("prlctl delete {$vzidArg}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("prlctl delete failed for {$vzid} (exit {$return})");
 	}
 
 	public static function setupRouting($vzid, $id) {
@@ -205,13 +302,13 @@ class Virtuozzo
 		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'rsync -a rsync://rsync.is.cc/admin /admin;/admin/yumcron;echo \"/usr/local/emps/bin/php /usr/local/webuzo/cron.php\" > /etc/cron.daily/wu.sh && chmod +x /etc/cron.daily/wu.sh'", $return, 60));
 		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'wget -N http://files.webuzo.com/install.sh -O /install.sh'", $return, 120));
 		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'chmod +x /install.sh;bash -l /install.sh;rm -f /install.sh'", $return, 320));
-		Vps::getLogger()->info("Sleeping for a minute to workaround an ish");
+		Vps::getLogger()->info("Sleeping for a minute to workaround a known race");
 		sleep(10);
 		Vps::getLogger()->info("That was a pleasant nap.. back to the grind...");
 	}
 
 	public static function setupCpanel($vzid) {
-		Vps::getLogger()->info("Sleeping for a minute to workaround an ish");
+		Vps::getLogger()->info("Sleeping for a minute to workaround a known race");
 		sleep(10);
 		Vps::getLogger()->info("That was a pleasant nap.. back to the grind...");
 		Vps::getLogger()->write(Vps::runCommand("prlctl exec {$vzid} 'yum -y install perl nano screen wget psmisc net-tools'", $return, 60));

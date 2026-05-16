@@ -114,6 +114,10 @@ class Lxc
 	* @return bool
 	*/
 	public static function addIp($vzid, $ip) {
+		if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+			Vps::getLogger()->error("Invalid IPv4 address '{$ip}'; refusing to modify container.");
+			return false;
+		}
 		$ips = self::getVpsIps($vzid);
 		if (in_array($ip, $ips)) {
 			Vps::getLogger()->error('Skipping adding IP '.$ip.' to '.$vzid.', it already exists in the container.');
@@ -122,11 +126,16 @@ class Lxc
 		Vps::getLogger()->info('Adding IP '.$ip.' to '.$vzid);
 		// find the next available device index
 		$escaped = escapeshellarg($vzid);
+		$ipArg = escapeshellarg($ip);
 		$existing = trim(Vps::runCommand("lxc config device list {$escaped} 2>/dev/null"));
 		$devices = $existing == '' ? [] : explode("\n", $existing);
 		$idx = count($devices);
 		$devName = 'eth'.$idx;
-		Vps::getLogger()->write(Vps::runCommand("lxc config device add {$escaped} {$devName} nic nictype=bridged parent=br0 ipv4.address={$ip}"));
+		Vps::getLogger()->write(Vps::runCommand("lxc config device add {$escaped} {$devName} nic nictype=bridged parent=br0 ipv4.address={$ipArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("lxc config device add failed for {$vzid} (exit {$return})");
+			return false;
+		}
 		return true;
 	}
 
@@ -137,7 +146,36 @@ class Lxc
 	* @param string $ip IP address
 	* @return bool
 	*/
+	/**
+	* Changes one of a container's IP addresses by removing the old and adding the new.
+	*
+	* @param string $vzid container name
+	* @param string $ipOld existing IP to drop
+	* @param string $ipNew replacement IP
+	* @return bool true on success, false on failure
+	*/
+	public static function changeIp($vzid, $ipOld, $ipNew) {
+		if ($ipOld === $ipNew) {
+			Vps::getLogger()->error("changeIp called with identical old and new IP '{$ipOld}'; nothing to do.");
+			return false;
+		}
+		Vps::getLogger()->info("Changing IP on {$vzid} from {$ipOld} to {$ipNew}");
+		if (!self::removeIp($vzid, $ipOld)) {
+			Vps::getLogger()->error("removeIp({$ipOld}) failed; aborting changeIp.");
+			return false;
+		}
+		if (!self::addIp($vzid, $ipNew)) {
+			Vps::getLogger()->error("addIp({$ipNew}) failed after removing {$ipOld}; container may now have fewer IPs than before.");
+			return false;
+		}
+		return true;
+	}
+
 	public static function removeIp($vzid, $ip) {
+		if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+			Vps::getLogger()->error("Invalid IPv4 address '{$ip}'; refusing to modify container.");
+			return false;
+		}
 		$ips = self::getVpsIps($vzid);
 		if (!in_array($ip, $ips)) {
 			Vps::getLogger()->error('Skipping removing IP '.$ip.' from '.$vzid.', it does not appear to exist in the container.');
@@ -146,15 +184,20 @@ class Lxc
 		Vps::getLogger()->info('Removing IP '.$ip.' from '.$vzid);
 		// find the device with this IP
 		$escaped = escapeshellarg($vzid);
-		$json = trim(Vps::runCommand("lxc config show {$escaped} --expanded 2>/dev/null"));
 		// parse devices from lxc config to find matching device
 		$devices = trim(Vps::runCommand("lxc config device list {$escaped} 2>/dev/null"));
 		if ($devices != '') {
 			foreach (explode("\n", $devices) as $dev) {
 				$dev = trim($dev);
-				$devIp = trim(Vps::runCommand("lxc config device get {$escaped} {$dev} ipv4.address 2>/dev/null"));
+				if ($dev == '') continue;
+				$devArg = escapeshellarg($dev);
+				$devIp = trim(Vps::runCommand("lxc config device get {$escaped} {$devArg} ipv4.address 2>/dev/null"));
 				if ($devIp == $ip) {
-					Vps::getLogger()->write(Vps::runCommand("lxc config device remove {$escaped} {$dev}"));
+					Vps::getLogger()->write(Vps::runCommand("lxc config device remove {$escaped} {$devArg}", $return));
+					if ($return != 0) {
+						Vps::getLogger()->error("lxc config device remove failed for {$vzid}/{$dev} (exit {$return})");
+						return false;
+					}
 					return true;
 				}
 			}
@@ -296,8 +339,10 @@ class Lxc
 	*/
 	public static function startVps($vzid) {
 		Vps::getLogger()->info('Starting the Container');
-		$vzid = escapeshellarg($vzid);
-		Vps::getLogger()->write(Vps::runCommand("lxc start {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("lxc start {$vzidArg}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("lxc start failed for {$vzid} (exit {$return})");
 	}
 
 	/**
@@ -307,8 +352,10 @@ class Lxc
 	*/
 	public static function resetVps($vzid) {
 		Vps::getLogger()->info('Resetting the Container');
-		$vzid = escapeshellarg($vzid);
-		Vps::getLogger()->write(Vps::runCommand("lxc restart {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("lxc restart {$vzidArg}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("lxc restart failed for {$vzid} (exit {$return})");
 	}
 
 	/**
@@ -342,12 +389,14 @@ class Lxc
 	*/
 	public static function destroyVps($vzid) {
 		if (Vps::isVpsRunning($vzid)) {
-			Vps::getLogger()->write("Container is running, please stop first.\n");
+			Vps::getLogger()->error("Container '{$vzid}' is running, please stop it first.");
 			return;
 		}
 		$escaped = escapeshellarg($vzid);
 		Vps::getLogger()->info('Deleting container');
-		Vps::getLogger()->write(Vps::runCommand("lxc delete {$escaped}"));
+		Vps::getLogger()->write(Vps::runCommand("lxc delete {$escaped}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("lxc delete failed for {$vzid} (exit {$return})");
 	}
 
 	/**
@@ -396,9 +445,14 @@ class Lxc
 	*/
 	public static function setupRouting($vzid, $ip, $pool, $useAll, $id) {
 		Vps::getLogger()->info('Setting up Routing');
-		$base = Vps::$base;
 		if ($ip != 'none') {
-			Vps::getLogger()->write(Vps::runCommand("{$base}/tclimit {$ip};"));
+			$tclimit = Vps::requireScript('tclimit');
+			if ($tclimit !== false) {
+				$ipArg = escapeshellarg($ip);
+				Vps::getLogger()->write(Vps::runCommand(escapeshellarg($tclimit)." {$ipArg}", $return));
+				if ($return != 0)
+					Vps::getLogger()->error("tclimit failed for {$ip} (exit {$return})");
+			}
 			self::blockSmtp($vzid, $id);
 		}
 	}

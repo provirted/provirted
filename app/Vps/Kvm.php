@@ -9,27 +9,58 @@ use App\Os\Xinetd;
 
 class Kvm
 {
+	/**
+	* Returns the list of running KVM domains by name.
+	* @return array
+	*/
 	public static function getRunningVps() {
-		return explode("\n", trim(Vps::runCommand("virsh list --name")));
+		$out = trim(Vps::runCommand("virsh list --name", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh list --name failed (exit {$return})");
+			return [];
+		}
+		return $out == '' ? [] : explode("\n", $out);
 	}
 
+	/**
+	* Returns the list of all KVM domains by name (running or stopped).
+	* @return array
+	*/
 	public static function getAllVps() {
-		return explode("\n", trim(Vps::runCommand("virsh list --all --name")));
+		$out = trim(Vps::runCommand("virsh list --all --name", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh list --all --name failed (exit {$return})");
+			return [];
+		}
+		return $out == '' ? [] : explode("\n", $out);
 	}
 
+	/**
+	* True if libvirt knows about the given domain (running or stopped).
+	* @param string $vzid VPS identifier
+	* @return bool
+	*/
 	public static function vpsExists($vzid) {
-		$vzid = escapeshellarg($vzid);
-		Vps::getLogger()->write(Vps::runCommand("virsh dominfo {$vzid} >/dev/null 2>&1", $return));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("virsh dominfo {$vzidArg} >/dev/null 2>&1", $return));
 		return $return == 0;
 	}
 
+	/**
+	* Returns the parsed `vz` libvirt storage pool XML.
+	* @return array
+	*/
 	public static function getPool() {
 		$pool = XmlToArray::go(trim(Vps::runCommand("virsh pool-dumpxml vz 2>/dev/null")));
 		return $pool;
 	}
 
+	/**
+	* Returns the storage pool type (e.g. 'logical', 'zfs', 'dir').
+	* Triggers a pool-creation script if no pool exists, and starts the pool if it's defined but inactive.
+	* @return string
+	*/
 	public static function getPoolType() {
-		//$pool = self::getPool()['pool_attr']['type'];
 		$pool = trim(Vps::runCommand('virsh pool-dumpxml vz 2>/dev/null|grep type|cut -d\\\' -f2'));
 		if ($pool == '') {
 			$base = Vps::$base;
@@ -37,7 +68,7 @@ class Kvm
 			$pool = trim(Vps::runCommand('virsh pool-dumpxml vz 2>/dev/null|grep type|cut -d\\\' -f2'));
 		}
 		if (preg_match('/vz/', Vps::runCommand("virsh pool-list --inactive"))) {
-			Vps::getLogger()->write(Vps::runCommand("virsh pool-start vz;"));
+			Vps::getLogger()->write(Vps::runCommand("virsh pool-start vz"));
 		}
 		return $pool;
 	}
@@ -46,11 +77,15 @@ class Kvm
 	* gets the vps details in xml format
 	*
 	* @param string $vzid vps identifier
-	* @return string xml formatted vps informatoin
+	* @return string xml formatted vps information, empty string on failure
 	*/
 	public static function getVpsXml($vzid) {
-		$vzid = escapeshellarg($vzid);
-		$xml = trim(Vps::runCommand("virsh dumpxml {$vzid};"));
+		$vzidArg = escapeshellarg($vzid);
+		$xml = trim(Vps::runCommand("virsh dumpxml {$vzidArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh dumpxml {$vzid} failed (exit {$return})");
+			return '';
+		}
 		return $xml;
 	}
 
@@ -58,33 +93,47 @@ class Kvm
 	* gets the vps details in an array
 	*
 	* @param string $vzid vps identifier
-	* @return array the array of vps information
+	* @return array|false the array of vps information, false on failure
 	*/
 	public static function getVps($vzid) {
 		$xml = self::getVpsXml($vzid);
+		if ($xml == '') {
+			return false;
+		}
 		$vps = XmlToArray::go($xml);
+		if (!is_array($vps) || !isset($vps['domain'])) {
+			Vps::getLogger()->error("Could not parse virsh XML for {$vzid}");
+			return false;
+		}
 		return $vps;
 	}
 
 	public static function getVpsMac($vzid) {
-        $response = self::getVps($vzid);
-        $interface = isset($response['domain']['devices']['interface']['mac_attr']) ? $response['domain']['devices']['interface'] : $response['domain']['devices']['interface'][0];
-        if (isset($interface['mac_attr']['address'])) {
-		    $mac = $interface['mac_attr']['address'];
-        } else {
-            $mac = '';
-        }
-		return $mac;
+		$response = self::getVps($vzid);
+		if ($response === false || !isset($response['domain']['devices']['interface'])) {
+			return '';
+		}
+		$interface = isset($response['domain']['devices']['interface']['mac_attr']) ? $response['domain']['devices']['interface'] : $response['domain']['devices']['interface'][0];
+		if (isset($interface['mac_attr']['address'])) {
+			return $interface['mac_attr']['address'];
+		}
+		return '';
 	}
 
 	public static function getVpsIps($vzid) {
-        $response = self::getVps($vzid);
-        $interface = isset($response['domain']['devices']['interface']['mac_attr']) ? $response['domain']['devices']['interface'] : $response['domain']['devices']['interface'][0];
+		$response = self::getVps($vzid);
+		if ($response === false || !isset($response['domain']['devices']['interface'])) {
+			return [];
+		}
+		$interface = isset($response['domain']['devices']['interface']['mac_attr']) ? $response['domain']['devices']['interface'] : $response['domain']['devices']['interface'][0];
+		if (!isset($interface['filterref']) || !is_array($interface['filterref'])) {
+			return [];
+		}
 		$params = $interface['filterref'];
 		$ips = [];
 		if (array_key_exists('parameter_attr', $params) && $params['parameter_attr']['name'] == 'IP') {
 			$ips[] = $params['parameter_attr']['value'];
-		} else {
+		} elseif (isset($params['parameter']) && is_array($params['parameter'])) {
 			foreach ($params['parameter'] as $idx => $data) {
 				if (array_key_exists('name', $data) && $data['name'] == 'IP') {
 					$ips[] = $data['value'];
@@ -95,129 +144,263 @@ class Kvm
 	}
 
 	public static function addIp($vzid, $ip) {
+		if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+			Vps::getLogger()->error("Invalid IPv4 address '{$ip}'; refusing to modify VPS.");
+			return false;
+		}
 		$ips = self::getVpsIps($vzid);
 		if (in_array($ip, $ips)) {
 			Vps::getLogger()->error('Skipping adding IP '.$ip.' to '.$vzid.', it already exists in the VPS.');
 			return false;
 		}
-		Vps::getLogger()->error('Adding IP '.$ip.' to '.$vzid);
-		Vps::getLogger()->write(Vps::runCommand("virsh dumpxml --inactive --security-info {$vzid} > {$vzid}.xml"));
-		Vps::getLogger()->write(Vps::runCommand("sed s#\"</filterref>\"#\"  <parameter name='IP' value='{$ip}'/>\\n    </filterref>\"#g -i {$vzid}.xml"));
-		Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml"));
-		Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
+		Vps::getLogger()->info('Adding IP '.$ip.' to '.$vzid);
+		$vzidArg = escapeshellarg($vzid);
+		$xmlFile = tempnam(sys_get_temp_dir(), 'provirted-kvm-');
+		if ($xmlFile === false) {
+			Vps::getLogger()->error("Could not create temp file for {$vzid} XML; refusing to proceed.");
+			return false;
+		}
+		$xmlFileArg = escapeshellarg($xmlFile);
+		Vps::getLogger()->write(Vps::runCommand("virsh dumpxml --inactive --security-info {$vzidArg} > {$xmlFileArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh dumpxml failed for {$vzid} (exit {$return})");
+			@unlink($xmlFile);
+			return false;
+		}
+		Vps::getLogger()->write(Vps::runCommand("sed s#\"</filterref>\"#\"  <parameter name='IP' value='{$ip}'/>\\n    </filterref>\"#g -i {$xmlFileArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("sed failed editing {$xmlFile} (exit {$return})");
+			@unlink($xmlFile);
+			return false;
+		}
+		Vps::getLogger()->write(Vps::runCommand("virsh define {$xmlFileArg}", $return));
+		@unlink($xmlFile);
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh define failed for {$vzid} (exit {$return})");
+			return false;
+		}
 		$mac = self::getVpsMac($vzid);
 		if ($mac == '') {
-			Vps::getLogger()->error('Could not determine MAC for '.$vzid.'; skipping DHCP update.');
-			return;
+			Vps::getLogger()->error('Could not determine MAC for '.$vzid.'; DHCP not updated.');
+			return false;
 		}
-		Dhcpd::setup($vzid, $ip, $mac);
+		if (!Dhcpd::setup($vzid, $ip, $mac)) {
+			Vps::getLogger()->error('Dhcpd::setup reported failure; libvirt XML was updated but DHCP was not.');
+			return false;
+		}
+		return true;
 	}
 
 	public static function removeIp($vzid, $ip) {
-		$ips = self::getVpsIps($vzid);
-		if (!in_array($ip, $ips)) {
-			Vps::getLogger()->error('Skipping removing IP '.$ip.' from '.$vzid.', it does not appear to exit in the VPS.');
+		if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+			Vps::getLogger()->error("Invalid IPv4 address '{$ip}'; refusing to modify VPS.");
 			return false;
 		}
-		Vps::getLogger()->error('Removing IP '.$ip.' from '.$vzid);
-		Vps::getLogger()->write(Vps::runCommand("virsh dumpxml --inactive --security-info {$vzid} | grep -v \"value='{$ip}'\" > {$vzid}.xml"));
-		Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml"));
-		Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
+		$ips = self::getVpsIps($vzid);
+		if (!in_array($ip, $ips)) {
+			Vps::getLogger()->error('Skipping removing IP '.$ip.' from '.$vzid.', it does not appear to exist in the VPS.');
+			return false;
+		}
+		Vps::getLogger()->info('Removing IP '.$ip.' from '.$vzid);
+		$vzidArg = escapeshellarg($vzid);
+		$xmlFile = tempnam(sys_get_temp_dir(), 'provirted-kvm-');
+		if ($xmlFile === false) {
+			Vps::getLogger()->error("Could not create temp file for {$vzid} XML; refusing to proceed.");
+			return false;
+		}
+		$xmlFileArg = escapeshellarg($xmlFile);
+		$dumpFile = tempnam(sys_get_temp_dir(), 'provirted-kvm-dump-');
+		if ($dumpFile === false) {
+			Vps::getLogger()->error("Could not create temp file for {$vzid} dump; refusing to proceed.");
+			@unlink($xmlFile);
+			return false;
+		}
+		$dumpFileArg = escapeshellarg($dumpFile);
+		// dump first so virsh exit code is captured independently of grep
+		Vps::getLogger()->write(Vps::runCommand("virsh dumpxml --inactive --security-info {$vzidArg} > {$dumpFileArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh dumpxml failed for {$vzid} (exit {$return})");
+			@unlink($xmlFile);
+			@unlink($dumpFile);
+			return false;
+		}
+		// then strip the IP line (grep returning 1 = no matches removed, also fine)
+		Vps::getLogger()->write(Vps::runCommand("grep -v \"value='{$ip}'\" {$dumpFileArg} > {$xmlFileArg}", $return));
+		@unlink($dumpFile);
+		if ($return > 1) {
+			Vps::getLogger()->error("grep failed filtering {$dumpFile} (exit {$return})");
+			@unlink($xmlFile);
+			return false;
+		}
+		Vps::getLogger()->write(Vps::runCommand("virsh define {$xmlFileArg}", $return));
+		@unlink($xmlFile);
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh define failed for {$vzid} (exit {$return})");
+			return false;
+		}
 		$hosts = Dhcpd::getHosts();
 		if (isset($hosts[$vzid]) && $hosts[$vzid]['ip'] === $ip) {
-			Dhcpd::remove($vzid);
+			if (!Dhcpd::remove($vzid)) {
+				Vps::getLogger()->error('Dhcpd::remove reported failure; libvirt XML was updated but DHCP entry was not removed.');
+				return false;
+			}
 		}
+		return true;
+	}
+
+	/**
+	* Changes one of a VPS's IP addresses by removing the old and adding the new.
+	* KVM doesn't have a native rename operation for filterref entries; we sequence
+	* removeIp + addIp and surface a single bool so callers can act on the outcome.
+	*
+	* @param string $vzid VPS identifier
+	* @param string $ipOld existing IP to drop
+	* @param string $ipNew replacement IP
+	* @return bool true on success, false on failure
+	*/
+	public static function changeIp($vzid, $ipOld, $ipNew) {
+		if ($ipOld === $ipNew) {
+			Vps::getLogger()->error("changeIp called with identical old and new IP '{$ipOld}'; nothing to do.");
+			return false;
+		}
+		if (!filter_var($ipNew, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+			Vps::getLogger()->error("Invalid new IPv4 address '{$ipNew}'; refusing to modify VPS.");
+			return false;
+		}
+		$ips = self::getVpsIps($vzid);
+		if (in_array($ipNew, $ips)) {
+			Vps::getLogger()->error("The new IP '{$ipNew}' already exists on VPS {$vzid}.");
+			return false;
+		}
+		if (!in_array($ipOld, $ips)) {
+			Vps::getLogger()->error("The old IP '{$ipOld}' is not currently assigned to VPS {$vzid}.");
+			return false;
+		}
+		Vps::getLogger()->info("Changing IP on {$vzid} from {$ipOld} to {$ipNew}");
+		if (!self::removeIp($vzid, $ipOld)) {
+			Vps::getLogger()->error("removeIp({$ipOld}) failed; aborting changeIp.");
+			return false;
+		}
+		if (!self::addIp($vzid, $ipNew)) {
+			Vps::getLogger()->error("addIp({$ipNew}) failed after removing {$ipOld}; VPS may now have fewer IPs than before.");
+			return false;
+		}
+		return true;
 	}
 
 	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
 		Vps::getLogger()->info('Creating VPS Definition');
 		$base = Vps::$base;
 		Vps::getLogger()->indent();
+		$vzidArg = escapeshellarg($vzid);
+		$xmlFile = tempnam(sys_get_temp_dir(), 'provirted-kvm-define-');
+		if ($xmlFile === false) {
+			Vps::getLogger()->error("Could not create temp file for {$vzid} XML; aborting defineVps.");
+			Vps::getLogger()->unIndent();
+			return false;
+		}
+		$xmlFileArg = escapeshellarg($xmlFile);
+		$backupFile = $xmlFile.'.backup';
+		$backupArg = escapeshellarg($backupFile);
 		if (self::vpsExists($vzid)) {
-			Vps::getLogger()->write(Vps::runCommand("virsh destroy {$vzid}"));
-			Vps::getLogger()->write(Vps::runCommand("virsh dumpxml {$vzid} > {$vzid}.xml"));
-			Vps::getLogger()->write(Vps::runCommand("/bin/cp -f {$vzid}.xml {$vzid}.xml.backup"));
-			Vps::getLogger()->write(Vps::runCommand("virsh undefine {$vzid}"));
-			Vps::getLogger()->write(Vps::runCommand("mv -f {$vzid}.xml.backup {$vzid}.xml"));
+			Vps::getLogger()->write(Vps::runCommand("virsh destroy {$vzidArg}"));
+			Vps::getLogger()->write(Vps::runCommand("virsh dumpxml {$vzidArg} > {$xmlFileArg}", $return));
+			if ($return != 0)
+				Vps::getLogger()->error("virsh dumpxml failed for {$vzid} (exit {$return})");
+			Vps::getLogger()->write(Vps::runCommand("/bin/cp -f {$xmlFileArg} {$backupArg}"));
+			Vps::getLogger()->write(Vps::runCommand("virsh undefine {$vzidArg}", $return));
+			if ($return != 0)
+				Vps::getLogger()->error("virsh undefine failed for {$vzid} (exit {$return})");
+			Vps::getLogger()->write(Vps::runCommand("mv -f {$backupArg} {$xmlFileArg}"));
 		} else {
+			if (!file_exists($base.'/windows.xml')) {
+				Vps::getLogger()->error("Required template not found: {$base}/windows.xml; aborting defineVps.");
+				@unlink($xmlFile);
+				Vps::getLogger()->unIndent();
+				return false;
+			}
+			$baseXmlArg = escapeshellarg($base.'/windows.xml');
 			if ($pool != 'zfs') {
 				Vps::getLogger()->debug('Removing UUID Filterref and IP information');
-				Vps::getLogger()->write(Vps::runCommand("grep -v -e uuid -e filterref -e \"<parameter name='IP'\" {$base}/windows.xml | sed s#\"windows\"#\"{$vzid}\"#g > {$vzid}.xml"));
+				Vps::getLogger()->write(Vps::runCommand("grep -v -e uuid -e filterref -e \"<parameter name='IP'\" {$baseXmlArg} | sed s#\"windows\"#\"{$vzid}\"#g > {$xmlFileArg}"));
 			} else {
 				Vps::getLogger()->debug('Removing UUID information');
-				Vps::getLogger()->write(Vps::runCommand("grep -v -e uuid {$base}/windows.xml | sed -e s#\"windows\"#\"{$vzid}\"#g -e s#\"/dev/vz/{$vzid}\"#\"{$device}\"#g > {$vzid}.xml"));
+				Vps::getLogger()->write(Vps::runCommand("grep -v -e uuid {$baseXmlArg} | sed -e s#\"windows\"#\"{$vzid}\"#g -e s#\"/dev/vz/{$vzid}\"#\"{$device}\"#g > {$xmlFileArg}"));
 			}
 			if (!file_exists('/usr/libexec/qemu-kvm') && file_exists('/usr/bin/kvm')) {
 				Vps::getLogger()->debug('Replacing KVM Binary Path');
-				Vps::getLogger()->write(Vps::runCommand("sed s#\"/usr/libexec/qemu-kvm\"#\"/usr/bin/kvm\"#g -i {$vzid}.xml"));
+				Vps::getLogger()->write(Vps::runCommand("sed s#\"/usr/libexec/qemu-kvm\"#\"/usr/bin/kvm\"#g -i {$xmlFileArg}"));
 			}
 		}
 		if ($useAll == true || $ip == 'none') {
 			Vps::getLogger()->debug('Removing IP information');
-			Vps::getLogger()->write(Vps::runCommand("sed -e s#\"^.*<parameter name='IP.*$\"#\"\"#g -e  s#\"^.*filterref.*$\"#\"\"#g -i {$vzid}.xml"));
+			Vps::getLogger()->write(Vps::runCommand("sed -e s#\"^.*<parameter name='IP.*$\"#\"\"#g -e  s#\"^.*filterref.*$\"#\"\"#g -i {$xmlFileArg}"));
 		} else {
 			Vps::getLogger()->debug('Replacing UUID Filterref and IP information');
 			$repl = "<parameter name='IP' value='{$ip}'/>";
 			if (count($extraIps) > 0)
 				foreach ($extraIps as $extraIp)
 					$repl = "{$repl}\\n        <parameter name='IP' value='{$extraIp}'/>";
-			Vps::getLogger()->write(Vps::runCommand("sed s#\"<parameter name='IP' value.*/>\"#\"{$repl}\"#g -i {$vzid}.xml;"));
+			Vps::getLogger()->write(Vps::runCommand("sed s#\"<parameter name='IP' value.*/>\"#\"{$repl}\"#g -i {$xmlFileArg}"));
 		}
 		if ($mac != '') {
-			Vps::getLogger()->debug('Replacing MAC addresss');
-			Vps::getLogger()->write(Vps::runCommand("sed s#\"<mac address='.*'\"#\"<mac address='{$mac}'\"#g -i {$vzid}.xml"));
+			Vps::getLogger()->debug('Replacing MAC address');
+			Vps::getLogger()->write(Vps::runCommand("sed s#\"<mac address='.*'\"#\"<mac address='{$mac}'\"#g -i {$xmlFileArg}"));
 		} else {
 			Vps::getLogger()->debug('Removing MAC address');
-			Vps::getLogger()->write(Vps::runCommand("sed s#\"^.*<mac address.*$\"#\"\"#g -i {$vzid}.xml"));
+			Vps::getLogger()->write(Vps::runCommand("sed s#\"^.*<mac address.*$\"#\"\"#g -i {$xmlFileArg}"));
 		}
 		Vps::getLogger()->debug('Setting CPU limits');
         if ($useAll === true || substr($template, 0, 7) != 'windows') {
-            Vps::getLogger()->write(Vps::runCommand("sed s#\"<cpu mode='host-model'/>\"#\"<cpu mode='host-passthrough' check='none'>\\n    <cache mode='passthrough'/>\\n  </cpu>\"#g -i {$vzid}.xml;"));
+            Vps::getLogger()->write(Vps::runCommand("sed s#\"<cpu mode='host-model'/>\"#\"<cpu mode='host-passthrough' check='none'>\\n    <cache mode='passthrough'/>\\n  </cpu>\"#g -i {$xmlFileArg}"));
         }
-		//Vps::getLogger()->write(Vps::runCommand("sed s#\"<\(vcpu.*\)>.*</vcpu>\"#\"<vcpu placement='static' current='{$cpu}'>{$maxCpu}</vcpu>\"#g -i {$vzid}.xml;"));
-        Vps::getLogger()->write(Vps::runCommand("sed s#\"<\(vcpu.*\)>.*</vcpu>\"#\"<vcpu placement='static' current='{$cpu}'>{$cpu}</vcpu>\"#g -i {$vzid}.xml;"));
+        Vps::getLogger()->write(Vps::runCommand("sed s#\"<\(vcpu.*\)>.*</vcpu>\"#\"<vcpu placement='static' current='{$cpu}'>{$cpu}</vcpu>\"#g -i {$xmlFileArg}"));
 		Vps::getLogger()->debug('Setting Max Memory limits');
-		//Vps::getLogger()->write(Vps::runCommand("sed s#\"<memory.*memory>\"#\"<memory unit='KiB'>{$maxRam}</memory>\"#g -i {$vzid}.xml;"));
-        Vps::getLogger()->write(Vps::runCommand("sed s#\"<memory.*memory>\"#\"<memory unit='KiB'>{$ram}</memory>\"#g -i {$vzid}.xml;"));
+        Vps::getLogger()->write(Vps::runCommand("sed s#\"<memory.*memory>\"#\"<memory unit='KiB'>{$ram}</memory>\"#g -i {$xmlFileArg}"));
 		Vps::getLogger()->debug('Setting Memory limits');
-		Vps::getLogger()->write(Vps::runCommand("sed s#\"<currentMemory.*currentMemory>\"#\"<currentMemory unit='KiB'>{$ram}</currentMemory>\"#g -i {$vzid}.xml;"));
+		Vps::getLogger()->write(Vps::runCommand("sed s#\"<currentMemory.*currentMemory>\"#\"<currentMemory unit='KiB'>{$ram}</currentMemory>\"#g -i {$xmlFileArg}"));
 		if (trim(Vps::runCommand("grep -e \"flags.*ept\" -e \"flags.*npt\" /proc/cpuinfo")) != '') {
 			Vps::getLogger()->debug('Adding HAP features flag');
-			Vps::getLogger()->write(Vps::runCommand("sed s#\"<features>\"#\"<features>\\n    <hap/>\"#g -i {$vzid}.xml;"));
+			Vps::getLogger()->write(Vps::runCommand("sed s#\"<features>\"#\"<features>\\n    <hap/>\"#g -i {$xmlFileArg}"));
 		}
 		if (trim(Vps::runCommand("date \"+%Z\"")) == 'PDT') {
 			Vps::getLogger()->debug('Setting Timezone to PST');
-			Vps::getLogger()->write(Vps::runCommand("sed s#\"America/New_York\"#\"America/Los_Angeles\"#g -i {$vzid}.xml;"));
+			Vps::getLogger()->write(Vps::runCommand("sed s#\"America/New_York\"#\"America/Los_Angeles\"#g -i {$xmlFileArg}"));
 		}
 		if (file_exists('/etc/lsb-release')) {
 			if (substr($template, 0, 7) == 'windows') {
 				Vps::getLogger()->debug('Adding HyperV block');
-				Vps::getLogger()->write(Vps::runCommand("sed -e s#\"</features>\"#\"  <hyperv>\\n      <relaxed state='on'/>\\n      <vapic state='on'/>\\n      <spinlocks state='on' retries='8191'/>\\n    </hyperv>\\n  </features>\"#g -i {$vzid}.xml;"));
+				Vps::getLogger()->write(Vps::runCommand("sed -e s#\"</features>\"#\"  <hyperv>\\n      <relaxed state='on'/>\\n      <vapic state='on'/>\\n      <spinlocks state='on' retries='8191'/>\\n    </hyperv>\\n  </features>\"#g -i {$xmlFileArg}"));
 				Vps::getLogger()->debug('Adding HyperV timer');
-				Vps::getLogger()->write(Vps::runCommand("sed -e s#\"<clock offset='timezone' timezone='\([^']*\)'/>\"#\"<clock offset='timezone' timezone='\\1'>\\n    <timer name='hypervclock' present='yes'/>\\n  </clock>\"#g -i {$vzid}.xml;"));
+				Vps::getLogger()->write(Vps::runCommand("sed -e s#\"<clock offset='timezone' timezone='\([^']*\)'/>\"#\"<clock offset='timezone' timezone='\\1'>\\n    <timer name='hypervclock' present='yes'/>\\n  </clock>\"#g -i {$xmlFileArg}"));
 			}
 			Vps::getLogger()->debug('Customizing SCSI controller');
-			Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<controller type='scsi' index='0'.*\)>\"#\"\\1 model='virtio-scsi'>\\n      <driver queues='{$cpu}'/>\"#g -i  {$vzid}.xml;"));
+			Vps::getLogger()->write(Vps::runCommand("sed s#\"\(<controller type='scsi' index='0'.*\)>\"#\"\\1 model='virtio-scsi'>\\n      <driver queues='{$cpu}'/>\"#g -i {$xmlFileArg}"));
 		}
-		Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml", $return));
-		Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
-		//Vps::getLogger()->write(Vps::runCommand("virsh setmaxmem {$vzid} $maxRam;"));
-		//Vps::getLogger()->write(Vps::runCommand("virsh setmem {$vzid} $ram;"));
-		//Vps::getLogger()->write(Vps::runCommand("virsh setvcpus {$vzid} $cpu;"));
+		Vps::getLogger()->write(Vps::runCommand("virsh define {$xmlFileArg}", $return));
+		@unlink($xmlFile);
 		Vps::getLogger()->unIndent();
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh define failed for {$vzid} (exit {$return})");
+			return false;
+		}
 		if ($ip != 'none') {
 			Dhcpd::setup($vzid, $ip, $mac);
 		}
 		if ($ipv6Ip !== false) {
 			Dhcpd6::setup($vzid, $ipv6Ip, $ipv6Range, $mac);
 		}
-		return $return == 0;
+		return true;
 	}
 
 	public static function runBuildEbtables() {
 		if (Vps::getPoolType() != 'zfs') {
-			$base = Vps::$base;
-			Vps::getLogger()->write(Vps::runCommand("bash {$base}/run_buildebtables.sh"));
+			$script = Vps::requireScript('run_buildebtables.sh');
+			if ($script === false)
+				return;
+			Vps::getLogger()->write(Vps::runCommand("bash ".escapeshellarg($script), $return));
+			if ($return != 0)
+				Vps::getLogger()->error("run_buildebtables.sh failed (exit {$return})");
 		}
 	}
 
@@ -249,87 +432,151 @@ class Kvm
 		return $remotes;
 	}
 
-	public static function  getVncPort($vzid) {
-		$vncPort = trim(Vps::runCommand("virsh vncdisplay {$vzid} | cut -d: -f2 | head -n 1"));
+	public static function getVncPort($vzid) {
+		$vzidArg = escapeshellarg($vzid);
+		$vncPort = trim(Vps::runCommand("virsh vncdisplay {$vzidArg} | cut -d: -f2 | head -n 1"));
 		if ($vncPort == '') {
 			sleep(2);
-			$vncPort = trim(Vps::runCommand("virsh vncdisplay {$vzid} | cut -d: -f2 | head -n 1"));
+			$vncPort = trim(Vps::runCommand("virsh vncdisplay {$vzidArg} | cut -d: -f2 | head -n 1"));
 			if ($vncPort == '') {
 				sleep(2);
-				$vncPort = trim(Vps::runCommand("virsh dumpxml {$vzid} |grep -i 'graphics type=.vnc.' | cut -d\' -f4"));
+				$vncPort = trim(Vps::runCommand("virsh dumpxml {$vzidArg} |grep -i 'graphics type=.vnc.' | cut -d\\' -f4"));
+				if (!is_numeric($vncPort)) {
+					Vps::getLogger()->error("Could not determine VNC port for {$vzid}");
+					return 0;
+				}
+				return intval($vncPort);
 			} else {
 				$vncPort += 5900;
 			}
 		} else {
 			$vncPort += 5900;
 		}
-		return is_numeric($vncPort) ? intval($vncPort) : $vncPort;
+		return is_numeric($vncPort) ? intval($vncPort) : 0;
 	}
 
 	public static function setupStorage($vzid, $device, $pool, $hd) {
 		Vps::getLogger()->info('Creating Storage Pool');
-		$base = Vps::$base;
+		$vzidArg = escapeshellarg($vzid);
 		if ($pool == 'zfs') {
-			Vps::getLogger()->write(Vps::runCommand("zfs create vz/{$vzid}"));
-			@mkdir('/vz/'.$vzid, 0777, true);
-			while (!file_exists('/vz/'.$vzid)) {
-				sleep(1);
+			Vps::getLogger()->write(Vps::runCommand("zfs create vz/{$vzidArg}", $return));
+			if ($return != 0) {
+				Vps::getLogger()->error("zfs create vz/{$vzid} failed (exit {$return})");
+				return;
 			}
-			//virsh vol-create-as --pool vz --name {$vzid}/os.qcow2 --capacity "$hd"M --format qcow2 --prealloc-metadata
-			//sleep 5s;
-			//device="$(virsh vol-list vz --details|grep " {$vzid}[/ ]"|awk '{ print $2 }')"
+			@mkdir('/vz/'.$vzid, 0777, true);
+			$waited = 0;
+			while (!file_exists('/vz/'.$vzid) && $waited < 30) {
+				sleep(1);
+				$waited++;
+			}
+			if (!file_exists('/vz/'.$vzid)) {
+				Vps::getLogger()->error("/vz/{$vzid} did not appear after 30s; storage may not be ready");
+				return;
+			}
 		} else {
-			Vps::getLogger()->write(Vps::runCommand("{$base}/vps_kvm_lvmcreate.sh {$vzid} {$hd}"));
-			// exit here on failed exit status
+			$script = Vps::requireScript('vps_kvm_lvmcreate.sh');
+			if ($script === false)
+				return;
+			Vps::getLogger()->write(Vps::runCommand(escapeshellarg($script)." {$vzidArg} ".intval($hd), $return));
+			if ($return != 0) {
+				Vps::getLogger()->error("vps_kvm_lvmcreate.sh failed for {$vzid} (exit {$return})");
+				return;
+			}
 		}
 		Vps::getLogger()->info("{$pool} pool device {$device} created");
 	}
 
+	/**
+	* Removes storage backing for a destroyed VPS. Picks zfs vs LVM based on pool type.
+	* @param string $vzid VPS identifier
+	*/
 	public static function removeStorage($vzid) {
 		$pool = Vps::getPoolType();
+		$vzidArg = escapeshellarg($vzid);
 		if ($pool == 'zfs') {
 			Vps::getLogger()->write(Vps::runCommand("zfs list -t snapshot|grep \"/{$vzid}@\"|cut -d\" \" -f1|xargs -r -n 1 zfs destroy -v"));
-			Vps::getLogger()->write(Vps::runCommand("virsh vol-delete --pool vz/os.qcow2 {$vzid} 2>/dev/null"));
-			Vps::getLogger()->write(Vps::runCommand("virsh vol-delete --pool vz {$vzid}"));
+			Vps::getLogger()->write(Vps::runCommand("virsh vol-delete --pool vz/os.qcow2 {$vzidArg} 2>/dev/null"));
+			Vps::getLogger()->write(Vps::runCommand("virsh vol-delete --pool vz {$vzidArg}"));
 			Vps::getLogger()->write(Vps::runCommand("zfs destroy vz/{$vzid}"));
 			if (file_exists('/vz/'.$vzid))
-				rmdir('/vz/'.$vzid);
+				@rmdir('/vz/'.$vzid);
 		} else {
 			Vps::getLogger()->write(Vps::runCommand("kpartx -dv /dev/vz/{$vzid}"));
 			Vps::getLogger()->write(Vps::runCommand("lvremove -f /dev/vz/{$vzid}"));
 		}
 	}
 
+	/**
+	* Enables auto-start on host boot for a VPS.
+	* @param string $vzid VPS identifier
+	*/
 	public static function enableAutostart($vzid) {
 		Vps::getLogger()->info('Enabling On-Boot Automatic Startup of the VPS');
-		Vps::getLogger()->write(Vps::runCommand("virsh autostart {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("virsh autostart {$vzidArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh autostart failed for {$vzid} (exit {$return})");
+		}
 	}
 
+	/**
+	* Disables auto-start on host boot for a VPS.
+	* @param string $vzid VPS identifier
+	*/
 	public static function disableAutostart($vzid) {
 		Vps::getLogger()->info('Disabling On-Boot Automatic Startup of the VPS');
-		Vps::getLogger()->write(Vps::runCommand("virsh autostart --disable {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("virsh autostart --disable {$vzidArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh autostart --disable failed for {$vzid} (exit {$return})");
+		}
 	}
 
+	/**
+	* Starts a VPS, cleans stale xinetd VNC entries, and rebuilds ebtables.
+	* @param string $vzid VPS identifier
+	*/
 	public static function startVps($vzid) {
 		Vps::getLogger()->info('Starting the VPS');
 		Xinetd::remove($vzid);
 		Xinetd::restart();
-		Vps::getLogger()->write(Vps::runCommand("virsh start {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("virsh start {$vzidArg}", $return));
+		if ($return != 0)
+			Vps::getLogger()->error("virsh start failed for {$vzid} (exit {$return})");
 		self::runBuildEbtables();
 	}
 
+	/**
+	* Hard-resets the VPS (sends a reset, not a clean shutdown).
+	* @param string $vzid VPS identifier
+	*/
 	public static function resetVps($vzid) {
 		Vps::getLogger()->info('Resetting the VPS');
-		Vps::getLogger()->write(Vps::runCommand("virsh reset {$vzid}"));
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("virsh reset {$vzidArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh reset failed for {$vzid} (exit {$return})");
+		}
 	}
 
+	/**
+	* Stops a VPS. By default attempts graceful shutdown (up to 240s) before forcing power-off.
+	* @param string $vzid VPS identifier
+	* @param bool $fast skip the graceful shutdown attempt and force power-off immediately
+	*/
 	public static function stopVps($vzid, $fast = false) {
 		Vps::getLogger()->info('Stopping the VPS');
 		Vps::getLogger()->indent();
+		$vzidArg = escapeshellarg($vzid);
 		$stopped = false;
 		if ($fast === false) {
-			Vps::getLogger()->info('Sending Softwawre Power-Off');
-			Vps::getLogger()->write(Vps::runCommand("virsh shutdown {$vzid}"));
+			Vps::getLogger()->info('Sending Software Power-Off');
+			Vps::getLogger()->write(Vps::runCommand("virsh shutdown {$vzidArg}", $return));
+			if ($return != 0) {
+				Vps::getLogger()->error("virsh shutdown failed for {$vzid} (exit {$return}); will force off");
+			}
 			$waited = 0;
 			$maxWait = 240;
 			$sleepTime = 5;
@@ -339,7 +586,7 @@ class Kvm
 					sleep($sleepTime);
 					$waited += $sleepTime;
 					if ($waited % 15 == 0)
-						Vps::runCommand("virsh shutdown {$vzid}");
+						Vps::runCommand("virsh shutdown {$vzidArg}");
 				} else {
 					Vps::getLogger()->info('appears to have cleanly shutdown');
 					$stopped = true;
@@ -348,27 +595,45 @@ class Kvm
 		}
 		if ($stopped === false) {
 			Vps::getLogger()->info('Sending Hardware Power-Off');
-			Vps::getLogger()->write(Vps::runCommand("virsh destroy {$vzid};"));
+			Vps::getLogger()->write(Vps::runCommand("virsh destroy {$vzidArg}", $return));
+			if ($return != 0)
+				Vps::getLogger()->error("virsh destroy failed for {$vzid} (exit {$return})");
 		}
 		Xinetd::remove($vzid);
 		Xinetd::restart();
 		Vps::getLogger()->unIndent();
 	}
 
+	/**
+	* Removes a VPS definition, its storage, and its DHCP entry. Refuses if the VPS is still running.
+	* If `virsh undefine` fails, aborts BEFORE removing storage/DHCP to avoid orphaning resources
+	* tied to a still-defined VM.
+	* @param string $vzid VPS identifier
+	*/
 	public static function destroyVps($vzid) {
 		if (Vps::isVpsRunning($vzid)) {
-			Vps::getLogger()->write("VPS is running please stop first.\n");
-		} else {
-			Vps::getLogger()->write(Vps::runCommand("virsh managedsave-remove {$vzid}"));
-			Vps::getLogger()->write(Vps::runCommand("virsh undefine {$vzid}"));
-			self::removeStorage($vzid);
-			Dhcpd::remove($vzid);
+			Vps::getLogger()->error("VPS '{$vzid}' is running; please stop it first.");
+			return;
 		}
+		$vzidArg = escapeshellarg($vzid);
+		Vps::getLogger()->write(Vps::runCommand("virsh managedsave-remove {$vzidArg}"));
+		Vps::getLogger()->write(Vps::runCommand("virsh undefine {$vzidArg}", $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("virsh undefine failed for {$vzid} (exit {$return}); aborting destroy");
+			return;
+		}
+		self::removeStorage($vzid);
+		Dhcpd::remove($vzid);
 	}
 
 	public static function installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit) {
 		Vps::getLogger()->info('Installing OS Template');
-		return $pool == 'zfs' ? self::installTemplateV2($vzid, $template, $password, $device, $hd, $kpartxOpts, $ioLimit, $iopsLimit) : self::installTemplateV1($vzid, $template, $password, $device, $hd, $kpartxOpts, $ioLimit, $iopsLimit);
+		$result = $pool == 'zfs'
+			? self::installTemplateV2($vzid, $template, $password, $device, $hd, $kpartxOpts, $ioLimit, $iopsLimit)
+			: self::installTemplateV1($vzid, $template, $password, $device, $hd, $kpartxOpts, $ioLimit, $iopsLimit);
+		if ($result === false)
+			Vps::getLogger()->error("Template installation failed for {$vzid} (template={$template}, pool={$pool}).");
+		return $result;
 	}
 
 	public static function setupRouting($vzid, $ip, $pool, $useAll, $id) {
@@ -376,14 +641,26 @@ class Kvm
 		if ($useAll == false) {
 			self::runBuildEbtables();
 		}
-		$base = Vps::$base;
 		if ($ip != 'none') {
-			Vps::getLogger()->write(Vps::runCommand("{$base}/tclimit {$ip};"));
+			$tclimit = Vps::requireScript('tclimit');
+			if ($tclimit !== false) {
+				$ipArg = escapeshellarg($ip);
+				Vps::getLogger()->write(Vps::runCommand(escapeshellarg($tclimit)." {$ipArg}", $return));
+				if ($return != 0)
+					Vps::getLogger()->error("tclimit failed for {$ip} (exit {$return})");
+			}
 			self::blockSmtp($vzid, $id);
 		}
 		if ($pool != 'zfs' && $useAll == false) {
-			Vps::getLogger()->write(Vps::runCommand("/admin/kvmenable ebflush;"));
-			Vps::getLogger()->write(Vps::runCommand("{$base}/buildebtablesrules | sh;"));
+			Vps::getLogger()->write(Vps::runCommand("/admin/kvmenable ebflush", $return));
+			if ($return != 0)
+				Vps::getLogger()->error("/admin/kvmenable ebflush failed (exit {$return})");
+			$buildRules = Vps::requireScript('buildebtablesrules');
+			if ($buildRules !== false) {
+				Vps::getLogger()->write(Vps::runCommand(escapeshellarg($buildRules)." | sh", $return));
+				if ($return != 0)
+					Vps::getLogger()->error("buildebtablesrules pipeline failed (exit {$return})");
+			}
 		}
 	}
 
@@ -429,24 +706,34 @@ class Kvm
 				Vps::getLogger()->info("Removing Downloaded Image");
 				Vps::getLogger()->write(Vps::runCommand("rm -f /vz/templates/{$template}.qcow2"));
 			}
-            Vps::getLogger()->write(Vps::runCommand("virsh detach-disk {$vzid} vda --persistent;"));
-            Vps::getLogger()->write(Vps::runCommand("virsh detach-disk {$vzid} sda --persistent;"));
-			//if (stripos($template, 'windows10') !== false) {
-				//Vps::getLogger()->debug('Replacing VirtIO Device with SCSI Device for Windows 10');
-				Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzid} /vz/{$vzid}/os.qcow2 sda --targetbus scsi --driver qemu --subdriver qcow2 --type disk --sourcetype file --persistent;"));
-                $dev = 'sda';
-			//} else {
-				//Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzid} /vz/{$vzid}/os.qcow2 vda --targetbus virtio --driver qemu --subdriver qcow2 --type disk --sourcetype file --persistent;"));
-                //$dev = 'vda';
-			//}
-			Vps::getLogger()->write(Vps::runCommand("virsh dumpxml {$vzid} > {$vzid}.xml"));
-            Vps::getLogger()->write(Vps::runCommand("sed s#\"type='qcow2'/\"#\"type='qcow2' cache='writeback' discard='unmap'/\"#g -i {$vzid}.xml"));
-			Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml"));
+			$vzidArg = escapeshellarg($vzid);
+            Vps::getLogger()->write(Vps::runCommand("virsh detach-disk {$vzidArg} vda --persistent"));
+            Vps::getLogger()->write(Vps::runCommand("virsh detach-disk {$vzidArg} sda --persistent"));
+			Vps::getLogger()->write(Vps::runCommand("virsh attach-disk {$vzidArg} /vz/{$vzid}/os.qcow2 sda --targetbus scsi --driver qemu --subdriver qcow2 --type disk --sourcetype file --persistent"));
+            $dev = 'sda';
+			$xmlFile = tempnam(sys_get_temp_dir(), 'provirted-kvm-install-');
+			if ($xmlFile === false) {
+				Vps::getLogger()->error("Could not create temp file for {$vzid} XML; aborting installTemplateV2.");
+				return false;
+			}
+			$xmlFileArg = escapeshellarg($xmlFile);
+			Vps::getLogger()->write(Vps::runCommand("virsh dumpxml {$vzidArg} > {$xmlFileArg}", $return));
+			if ($return != 0) {
+				Vps::getLogger()->error("virsh dumpxml failed for {$vzid} (exit {$return})");
+				@unlink($xmlFile);
+				return false;
+			}
+            Vps::getLogger()->write(Vps::runCommand("sed s#\"type='qcow2'/\"#\"type='qcow2' cache='writeback' discard='unmap'/\"#g -i {$xmlFileArg}"));
+			Vps::getLogger()->write(Vps::runCommand("virsh define {$xmlFileArg}", $return));
+			@unlink($xmlFile);
+			if ($return != 0) {
+				Vps::getLogger()->error("virsh define failed for {$vzid} (exit {$return})");
+				return false;
+			}
             if ($ioLimit !== false)
-                Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune {$vzid} {$dev} --total-bytes-sec {$ioLimit} --config"));
+                Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune {$vzidArg} {$dev} --total-bytes-sec ".intval($ioLimit)." --config"));
             if ($iopsLimit !== false)
-                Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune {$vzid} {$dev} --total-iops-sec {$iopsLimit} --config"));
-			Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
+                Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune {$vzidArg} {$dev} --total-iops-sec ".intval($iopsLimit)." --config"));
 		}
 		return true;
 	}

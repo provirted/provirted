@@ -99,10 +99,43 @@ class FooCommand extends Command {
 - `Vps::$base` → `/root/cpaneldirect` (host scripts dir: `tclimit`, `vps_refresh_vnc.sh`, `vps_kvm_lvmresize.sh`)
 - `/vz/` — VM/container storage root; `/vz/templates/` — Docker `Dockerfile`s and OVZ template tarballs
 - `~/.provirted/history.json` — command history (appended in `Console::finish()`; cleaned by `app/Command/HistoryCommand/CleanCommand.php`)
-- `~/.provirted/docker.json` — Docker network config read by `Docker::getConfig()`: `network_mode`, `macvlan_interface`, `bridge_network`, `restart_policy` (default `on-failure:5`), `container_command` (default `sleep infinity`)
-- `~/.provirted/host.json` — cached host info used by `Vps::getHostInfo()`
+- `~/.provirted/docker.json` — Docker network config read by `Docker::getConfig()`. Schema:
+  - `network_mode`: `"bridge"` (default) or `"macvlan"`. Selects the docker network driver for VPS containers.
+  - `macvlan_interface`: physical interface (default `"br0"`) used when `network_mode = "macvlan"`.
+  - `bridge_network`: docker bridge network name (default `"provirted-bridge"`) used when `network_mode = "bridge"`.
+  - `restart_policy`: docker restart policy applied to created containers (default `"on-failure:5"`).
+  - `container_command`: process started as PID 1 in the container (default `"sleep infinity"`).
+- `~/.provirted/host.json` — cached host info used by `Vps::getHostInfo()`. Falls back to this cache when the API call fails; age is logged.
 - `/etc/dhcp/dhcpd.vps` (or `/etc/dhcpd.vps`) — DHCP host entries managed by `app/Os/Dhcpd.php`
 - `/etc/xinetd.d/{vzid}` and `/etc/xinetd.d/{vzid}-spice` — VNC/SPICE port forwarders managed by `app/Os/Xinetd.php`
+
+### External helper scripts under `Vps::$base`
+
+These live in `/root/cpaneldirect` and are NOT versioned with this repo. Use `Vps::requireScript($relPath)` to verify a script exists before invoking; the helper logs a clear error and returns `false` when the script is missing.
+
+| Script | Used by | Purpose |
+|---|---|---|
+| `tclimit` | `Kvm::setupRouting`, `Lxc::setupRouting`, `Docker::setupRouting` | Per-IP bandwidth throttling via `tc` |
+| `run_buildebtables.sh` | `Kvm::runBuildEbtables` | Rebuilds ebtables filter rules |
+| `buildebtablesrules` | `Kvm::setupRouting` | Emits ebtables rules for `| sh` |
+| `vps_kvm_lvmcreate.sh` | `Kvm::setupStorage` (non-zfs) | Creates LVM logical volume for a KVM VPS |
+| `vps_get_image.sh` | `Kvm::installTemplateV1/V2` | Downloads OS image from URL |
+| `vzopenvztc.sh` | `OpenVz::defineVps` | Emits a tc-limit script for an OpenVZ container |
+| `vps_kvm_password_manual.php` | `Kvm::installTemplateV1` | Fallback root-password setter when chpasswd fails |
+
+### Verbose levels
+
+`-v` (info), `-vv` (info2), `-vvv` (debug), `-vvvv` (debug2). Maps to `App\Logger::$logLevels`:
+
+| Level | Name | When to use |
+|---|---|---|
+| 1 | critical | only emergencies |
+| 2 | error | failure that returns false / non-zero exit |
+| 3 | warn | recoverable problems |
+| 4 | info | normal flow (default) |
+| 5 | info2 | sub-step detail |
+| 6 | debug | shell-call detail (commands + stdout) |
+| 7 | debug2 | deepest trace |
 
 ## No tests
 

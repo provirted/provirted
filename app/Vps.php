@@ -53,6 +53,32 @@ class Vps
 	}
 
 	/**
+	* Verifies an external helper script exists and is executable before invoking it.
+	* Logs an error if missing or non-executable; callers should bail out on false.
+	*
+	* @param string $relPath path under self::$base (e.g. 'tclimit', 'vps_kvm_lvmcreate.sh')
+	*   OR an absolute path starting with '/'
+	* @return string|false the absolute path on success, false if the script can't be invoked
+	*/
+	public static function requireScript($relPath) {
+		$path = substr($relPath, 0, 1) === '/' ? $relPath : rtrim(self::$base, '/').'/'.$relPath;
+		if (!file_exists($path)) {
+			self::getLogger()->error("Required helper script not found: {$path}");
+			return false;
+		}
+		if (!is_executable($path)) {
+			// .sh / interpreted scripts may still run via `bash <path>`; only block hard
+			// failures (e.g. directory or unreadable file). Log a warning either way.
+			if (is_dir($path) || !is_readable($path)) {
+				self::getLogger()->error("Required helper script not readable: {$path}");
+				return false;
+			}
+			self::getLogger()->info2("Helper script {$path} is not marked executable; will rely on interpreter invocation.");
+		}
+		return $path;
+	}
+
+	/**
 	* @param \GetOptionKit\OptionCollection $opts
 	* @param array $args
 	*/
@@ -63,6 +89,11 @@ class Vps
 		if (array_key_exists('verbose', self::$opts->keys)) {
 			self::getLogger()->info("verbosity increased by ".self::$opts->keys['verbose']->value." levels");
 			self::getLogger()->setLevel(self::getLogger()->getLevel() + self::$opts->keys['verbose']->value);
+		}
+		// Session-wide history suppression: --no-log on the command, or env var PROVIRTED_NO_LOG=1
+		if ((array_key_exists('no-log', self::$opts->keys) && self::$opts->keys['no-log']->value)
+		    || getenv('PROVIRTED_NO_LOG') == '1') {
+			self::getLogger()->disableHistory();
 		}
 	}
 
@@ -89,7 +120,7 @@ class Vps
 	}
 
 	/**
-	* determins if the host is setup for virtualization or not
+	* determines if the host is setup for virtualization or not
 	*
 	* @return bool
 	*/
@@ -124,9 +155,17 @@ class Vps
     *
     * @param int|string $vzid
     * @param bool $useAll
+    * @return bool indicates success
     */
     public static function lock($vzid, $useAll) {
-        $response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=lock&id='.$vzid.'&module='.($useAll === true ? 'quickservers' : 'vps'))));
+        $module = $useAll === true ? 'quickservers' : 'vps';
+        $url = self::getUrl().'?action=lock&id='.urlencode($vzid).'&module='.$module;
+        self::runCommand('curl -sS --max-time 30 '.escapeshellarg($url).' >/dev/null 2>&1', $return);
+        if ($return != 0) {
+            self::getLogger()->error("Failed to lock VPS {$vzid} (curl exit {$return})");
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -134,21 +173,51 @@ class Vps
     *
     * @param int|string $vzid
     * @param bool $useAll
+    * @return bool indicates success
     */
     public static function unlock($vzid, $useAll) {
-        $response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=unlock&id='.$vzid.'&module='.($useAll === true ? 'quickservers' : 'vps'))));
+        $module = $useAll === true ? 'quickservers' : 'vps';
+        $url = self::getUrl().'?action=unlock&id='.urlencode($vzid).'&module='.$module;
+        self::runCommand('curl -sS --max-time 30 '.escapeshellarg($url).' >/dev/null 2>&1', $return);
+        if ($return != 0) {
+            self::getLogger()->error("Failed to unlock VPS {$vzid} (curl exit {$return})");
+            return false;
+        }
+        return true;
     }
 
 	/**
 	* returns an array containing information about the host server, vlans, and vps's
 	*
-	* @return array the host info
+	* @return array|false the host info on success, false on network or parse failure
 	*/
 	public static function getHostInfo() {
-		$response = trim(self::runCommand('curl -s '.escapeshellarg(self::getUrl().'?action=get_info')));
+		$url = self::getUrl().'?action=get_info';
+		$response = trim(self::runCommand('curl -sS --max-time 30 '.escapeshellarg($url).' 2>&1', $return));
+		if ($return != 0) {
+			self::getLogger()->error("Failed to fetch host info from {$url} (curl exit {$return}); response: {$response}");
+			// fall back to cached copy if available
+			$cacheFile = $_SERVER['HOME'].'/.provirted/host.json';
+			if (file_exists($cacheFile)) {
+				$age = time() - filemtime($cacheFile);
+				$ageReadable = $age < 3600 ? round($age / 60).' min' : ($age < 86400 ? round($age / 3600, 1).' hr' : round($age / 86400, 1).' day');
+				self::getLogger()->error("Using cached host info from {$cacheFile} (age: {$ageReadable})");
+				$cached = @file_get_contents($cacheFile);
+				if ($cached !== false) {
+					$host = json_decode($cached, true);
+					if (is_array($host) && isset($host['vlans'])) {
+						return $host;
+					}
+					self::getLogger()->error("Cached host info at {$cacheFile} is unparseable; aborting.");
+				} else {
+					self::getLogger()->error("Could not read cached host info from {$cacheFile}");
+				}
+			}
+			return false;
+		}
 		$host = json_decode($response, true);
 		if (!is_array($host) || !isset($host['vlans'])) {
-			self::getLogger()->error("invalid response getting host info:".$response);
+			self::getLogger()->error("Invalid response getting host info: {$response}");
 			return false;
 		}
 		/* $vps = {
@@ -163,7 +232,9 @@ class Vps
 		} */
 
 		@mkdir($_SERVER['HOME'].'/.provirted', 0750, true);
-		file_put_contents($_SERVER['HOME'].'/.provirted/host.json', $response);
+		if (@file_put_contents($_SERVER['HOME'].'/.provirted/host.json', $response) === false) {
+			self::getLogger()->error("Could not cache host info to ~/.provirted/host.json (check permissions)");
+		}
 		return $host;
 	}
 
@@ -225,7 +296,7 @@ class Vps
 	}
 
 	/**
-	* determins if a vps is running or not
+	* determines if a vps is running or not
 	*
 	* @param int|string $vzid
 	* @return bool
@@ -357,6 +428,11 @@ class Vps
 		$remotes = self::getVpsRemotes($vzid);
 		if (self::getVirtType() == 'virtuozzo') {
 			$vps = Virtuozzo::getVps($vzid);
+			if ($vps === false || !isset($vps['EnvID'])) {
+				self::getLogger()->error("Could not resolve EnvID for Virtuozzo VPS '{$vzid}'; aborting VNC setup.");
+				Xinetd::unlock();
+				return;
+			}
 			$vzid = $vps['EnvID'];
 		}
 		self::getLogger()->write('Parsing Services...');
@@ -467,28 +543,32 @@ class Vps
 
 	public static function addIp($vzid, $ip) {
 		if (self::getVirtType() == 'kvm')
-			Kvm::addIp($vzid, $ip);
+			return Kvm::addIp($vzid, $ip);
 		elseif (self::getVirtType() == 'virtuozzo')
-			Virtuozzo::addIp($vzid, $ip);
+			return Virtuozzo::addIp($vzid, $ip);
 		elseif (self::getVirtType() == 'openvz')
-			OpenVz::addIp($vzid, $ip);
+			return OpenVz::addIp($vzid, $ip);
 		elseif (self::getVirtType() == 'docker')
-			Docker::addIp($vzid, $ip);
+			return Docker::addIp($vzid, $ip);
 		elseif (self::getVirtType() == 'lxc')
-			Lxc::addIp($vzid, $ip);
+			return Lxc::addIp($vzid, $ip);
+		self::getLogger()->error('addIp is not supported on this platform: '.self::getVirtType());
+		return false;
 	}
 
 	public static function removeIp($vzid, $ip) {
 		if (self::getVirtType() == 'kvm')
-			Kvm::removeIp($vzid, $ip);
+			return Kvm::removeIp($vzid, $ip);
 		elseif (self::getVirtType() == 'virtuozzo')
-			Virtuozzo::removeIp($vzid, $ip);
+			return Virtuozzo::removeIp($vzid, $ip);
 		elseif (self::getVirtType() == 'openvz')
-			OpenVz::removeIp($vzid, $ip);
+			return OpenVz::removeIp($vzid, $ip);
 		elseif (self::getVirtType() == 'docker')
-			Docker::removeIp($vzid, $ip);
+			return Docker::removeIp($vzid, $ip);
 		elseif (self::getVirtType() == 'lxc')
-			Lxc::removeIp($vzid, $ip);
+			return Lxc::removeIp($vzid, $ip);
+		self::getLogger()->error('removeIp is not supported on this platform: '.self::getVirtType());
+		return false;
 	}
 
 	public static function changeIp($vzid, $ipOld, $ipNew) {
@@ -496,7 +576,13 @@ class Vps
 			return Virtuozzo::changeIp($vzid, $ipOld, $ipNew);
 		elseif (self::getVirtType() == 'openvz')
 			return OpenVz::changeIp($vzid, $ipOld, $ipNew);
-		self::getLogger()->error('Changing an IP is not supported on this platform yet.');
+		elseif (self::getVirtType() == 'kvm')
+			return Kvm::changeIp($vzid, $ipOld, $ipNew);
+		elseif (self::getVirtType() == 'lxc')
+			return Lxc::changeIp($vzid, $ipOld, $ipNew);
+		elseif (self::getVirtType() == 'docker')
+			return Docker::changeIp($vzid, $ipOld, $ipNew);
+		self::getLogger()->error('Changing an IP is not supported on this platform: '.self::getVirtType());
 		return false;
 	}
 

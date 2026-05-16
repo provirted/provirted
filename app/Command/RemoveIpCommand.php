@@ -37,6 +37,8 @@ class RemoveIpCommand extends Command {
 			Vps::getLogger()->error("The VPS '{$vzid}' you specified does not appear to exist, check the name and try again.");
 			return 1;
 		}
-		Vps::removeIp($vzid, $ip);
+		if (Vps::removeIp($vzid, $ip) === false) {
+			return 1;
+		}
 	}
 }

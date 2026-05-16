@@ -260,8 +260,18 @@ class Xinetd
     * @param int $port port number
     * @param string $ip ip address
     * @param string $hostIp host ip address
+    * @return bool indicates success
     */
 	public static function setup($vzid, $port, $ip = false, $hostIp = false) {
+		if (!preg_match('/^[A-Za-z0-9._-]+$/', $vzid)) {
+			Vps::getLogger()->error("Invalid xinetd service name '{$vzid}'; refusing to write file.");
+			return false;
+		}
+		if (!is_numeric($port) || intval($port) < 1 || intval($port) > 65535) {
+			Vps::getLogger()->error("Invalid xinetd port '{$port}' for service {$vzid}; refusing to write file.");
+			return false;
+		}
+		$port = intval($port);
 		$template = 'service '.$vzid.'
 {
 	type        = UNLISTED
@@ -276,7 +286,12 @@ class Xinetd
 	nice        = 10
 }
 ';
-		file_put_contents('/etc/xinetd.d/'.$vzid, $template);
+		$path = '/etc/xinetd.d/'.$vzid;
+		if (@file_put_contents($path, $template) === false) {
+			Vps::getLogger()->error("Could not write xinetd config to {$path} (check permissions)");
+			return false;
+		}
+		return true;
 	}
 
 	/**
