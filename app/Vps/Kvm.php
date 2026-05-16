@@ -105,6 +105,12 @@ class Kvm
 		Vps::getLogger()->write(Vps::runCommand("sed s#\"</filterref>\"#\"  <parameter name='IP' value='{$ip}'/>\\n    </filterref>\"#g -i {$vzid}.xml"));
 		Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml"));
 		Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
+		$mac = self::getVpsMac($vzid);
+		if ($mac == '') {
+			Vps::getLogger()->error('Could not determine MAC for '.$vzid.'; skipping DHCP update.');
+			return;
+		}
+		Dhcpd::setup($vzid, $ip, $mac);
 	}
 
 	public static function removeIp($vzid, $ip) {
@@ -117,6 +123,10 @@ class Kvm
 		Vps::getLogger()->write(Vps::runCommand("virsh dumpxml --inactive --security-info {$vzid} | grep -v \"value='{$ip}'\" > {$vzid}.xml"));
 		Vps::getLogger()->write(Vps::runCommand("virsh define {$vzid}.xml"));
 		Vps::getLogger()->write(Vps::runCommand("rm -f {$vzid}.xml"));
+		$hosts = Dhcpd::getHosts();
+		if (isset($hosts[$vzid]) && $hosts[$vzid]['ip'] === $ip) {
+			Dhcpd::remove($vzid);
+		}
 	}
 
 	public static function defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $maxRam, $maxCpu, $useAll, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
