@@ -2,6 +2,7 @@
 namespace App\Vps;
 
 use App\Vps;
+use App\Os\VpsIps;
 use App\Os\Xinetd;
 
 /**
@@ -100,6 +101,16 @@ class Virtuozzo
 			Vps::getLogger()->error("prlctl set --ipadd failed for {$vzid} (exit {$return})");
 			return false;
 		}
+		$ipsList = array_keys($ips);
+		$mainIp = VpsIps::getMainIp($vzid);
+		if ($mainIp === null && empty($ipsList)) {
+			VpsIps::setMainIp($vzid, $ip);
+		} elseif ($mainIp !== null) {
+			VpsIps::addAddonIp($mainIp, $ip);
+		} else {
+			VpsIps::setMainIp($vzid, $ipsList[0]);
+			VpsIps::addAddonIp($ipsList[0], $ip);
+		}
 		return true;
 	}
 
@@ -122,6 +133,16 @@ class Virtuozzo
 		if ($return != 0) {
 			Vps::getLogger()->error("prlctl set --ipdel failed for {$vzid} (exit {$return})");
 			return false;
+		}
+		$ipsList = array_keys($ips);
+		$mainIp = VpsIps::getMainIp($vzid);
+		if ($mainIp === null) {
+			$mainIp = isset($ipsList[0]) ? $ipsList[0] : null;
+		}
+		if ($mainIp === $ip) {
+			VpsIps::removeMainIp($vzid);
+		} else {
+			VpsIps::removeAddonIp($mainIp, $ip);
 		}
 		return true;
 	}
@@ -170,6 +191,14 @@ class Virtuozzo
 		Vps::getLogger()->write(Vps::runCommand("prlctl restart {$vzidArg}", $return));
 		if ($return != 0)
 			Vps::getLogger()->error("prlctl restart failed for {$vzid} (exit {$return})");
+		$recordedMain = VpsIps::getMainIp($vzid);
+		if ($ipOld == $ips[0]) {
+			VpsIps::setMainIp($vzid, $ipNew);
+		} else {
+			$mainKey = $recordedMain !== null ? $recordedMain : $ips[0];
+			VpsIps::removeAddonIp($mainKey, $ipOld);
+			VpsIps::addAddonIp($mainKey, $ipNew);
+		}
 		return true;
 	}
 

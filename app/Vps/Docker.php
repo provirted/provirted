@@ -2,6 +2,7 @@
 namespace App\Vps;
 
 use App\Vps;
+use App\Os\VpsIps;
 
 class Docker
 {
@@ -348,6 +349,15 @@ class Docker
 			Vps::getLogger()->error("docker network connect failed for {$vzid} (exit {$return})");
 			return false;
 		}
+		$mainIp = VpsIps::getMainIp($vzid);
+		if ($mainIp === null && empty($ips)) {
+			VpsIps::setMainIp($vzid, $ip);
+		} elseif ($mainIp !== null) {
+			VpsIps::addAddonIp($mainIp, $ip);
+		} else {
+			VpsIps::setMainIp($vzid, $ips[0]);
+			VpsIps::addAddonIp($ips[0], $ip);
+		}
 		return true;
 	}
 
@@ -408,6 +418,15 @@ class Docker
 				if ($return != 0) {
 					Vps::getLogger()->error("docker network disconnect failed for {$vzid}/{$netName} (exit {$return})");
 					return false;
+				}
+				$mainIp = VpsIps::getMainIp($vzid);
+				if ($mainIp === null) {
+					$mainIp = isset($ips[0]) ? $ips[0] : null;
+				}
+				if ($mainIp === $ip) {
+					VpsIps::removeMainIp($vzid);
+				} else {
+					VpsIps::removeAddonIp($mainIp, $ip);
 				}
 				return true;
 			}

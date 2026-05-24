@@ -2,6 +2,7 @@
 namespace App\Vps;
 
 use App\Vps;
+use App\Os\VpsIps;
 use App\Os\Xinetd;
 
 /**
@@ -96,6 +97,17 @@ class OpenVz
 			Vps::getLogger()->error("vzctl set --ipadd failed for {$vzid} (exit {$return})");
 			return false;
 		}
+		$mainIp = VpsIps::getMainIp($vzid);
+		if ($mainIp === null && empty($ips)) {
+			VpsIps::setMainIp($vzid, $ip);
+		} elseif ($mainIp !== null) {
+			VpsIps::addAddonIp($mainIp, $ip);
+		} else {
+			// IP existed on the VPS before the registry knew about it -- adopt
+			// the pre-existing first IP as main and register the new one as addon
+			VpsIps::setMainIp($vzid, $ips[0]);
+			VpsIps::addAddonIp($ips[0], $ip);
+		}
 		return true;
 	}
 
@@ -118,6 +130,15 @@ class OpenVz
 		if ($return != 0) {
 			Vps::getLogger()->error("vzctl set --ipdel failed for {$vzid} (exit {$return})");
 			return false;
+		}
+		$mainIp = VpsIps::getMainIp($vzid);
+		if ($mainIp === null) {
+			$mainIp = isset($ips[0]) ? $ips[0] : null;
+		}
+		if ($mainIp === $ip) {
+			VpsIps::removeMainIp($vzid);
+		} else {
+			VpsIps::removeAddonIp($mainIp, $ip);
 		}
 		return true;
 	}
@@ -166,6 +187,15 @@ class OpenVz
 		Vps::getLogger()->write(Vps::runCommand("vzctl restart {$vzidArg}", $return));
 		if ($return != 0)
 			Vps::getLogger()->error("vzctl restart failed for {$vzid} (exit {$return})");
+		$recordedMain = VpsIps::getMainIp($vzid);
+		if ($ipOld == $ips[0]) {
+			// main IP changed -- swap mainips entry and re-key any addon entries
+			VpsIps::setMainIp($vzid, $ipNew);
+		} else {
+			$mainKey = $recordedMain !== null ? $recordedMain : $ips[0];
+			VpsIps::removeAddonIp($mainKey, $ipOld);
+			VpsIps::addAddonIp($mainKey, $ipNew);
+		}
 		return true;
 	}
 

@@ -5,7 +5,7 @@ paths:
 
 # OS Utility Rules
 
-Applies to host-level helpers in `app/Os/`: `Os.php`, `Dhcpd.php`, `Dhcpd6.php`, `Xinetd.php`.
+Applies to host-level helpers in `app/Os/`: `Os.php`, `Dhcpd.php`, `Dhcpd6.php`, `Xinetd.php`, `VpsIps.php`.
 
 ## Namespace and use
 

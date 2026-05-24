@@ -5,6 +5,7 @@ use App\XmlToArray;
 use App\Vps;
 use App\Os\Dhcpd;
 use App\Os\Dhcpd6;
+use App\Os\VpsIps;
 use App\Os\Xinetd;
 
 class Kvm
@@ -179,14 +180,25 @@ class Kvm
 			Vps::getLogger()->error("virsh define failed for {$vzid} (exit {$return})");
 			return false;
 		}
-		$mac = self::getVpsMac($vzid);
-		if ($mac == '') {
-			Vps::getLogger()->error('Could not determine MAC for '.$vzid.'; DHCP not updated.');
-			return false;
-		}
-		if (!Dhcpd::setup($vzid, $ip, $mac)) {
-			Vps::getLogger()->error('Dhcpd::setup reported failure; libvirt XML was updated but DHCP was not.');
-			return false;
+		// dhcpd.vps holds exactly one entry per VPS, mapping the MAC to the
+		// VPS's main IP. Only (re)write it when this IP is becoming the main
+		// IP for this VPS -- otherwise the existing main IP entry would be
+		// stomped every time an additional IP is added.
+		$hosts = Dhcpd::getHosts();
+		$mainIp = isset($hosts[$vzid]) ? $hosts[$vzid]['ip'] : VpsIps::getMainIp($vzid);
+		if ($mainIp === null || $mainIp === '') {
+			$mac = self::getVpsMac($vzid);
+			if ($mac == '') {
+				Vps::getLogger()->error('Could not determine MAC for '.$vzid.'; DHCP not updated.');
+				return false;
+			}
+			if (!Dhcpd::setup($vzid, $ip, $mac)) {
+				Vps::getLogger()->error('Dhcpd::setup reported failure; libvirt XML was updated but DHCP was not.');
+				return false;
+			}
+			VpsIps::setMainIp($vzid, $ip);
+		} else {
+			VpsIps::addAddonIp($mainIp, $ip);
 		}
 		return true;
 	}
@@ -239,11 +251,18 @@ class Kvm
 			return false;
 		}
 		$hosts = Dhcpd::getHosts();
-		if (isset($hosts[$vzid]) && $hosts[$vzid]['ip'] === $ip) {
-			if (!Dhcpd::remove($vzid)) {
+		$dhcpMain = isset($hosts[$vzid]) ? $hosts[$vzid]['ip'] : null;
+		$recordedMain = VpsIps::getMainIp($vzid);
+		$mainIp = $dhcpMain !== null ? $dhcpMain : $recordedMain;
+		if ($mainIp === $ip) {
+			if ($dhcpMain !== null && !Dhcpd::remove($vzid)) {
 				Vps::getLogger()->error('Dhcpd::remove reported failure; libvirt XML was updated but DHCP entry was not removed.');
 				return false;
 			}
+			// removeMainIp also clears any addon entries keyed off this main IP
+			VpsIps::removeMainIp($vzid);
+		} else {
+			VpsIps::removeAddonIp($mainIp, $ip);
 		}
 		return true;
 	}
@@ -277,6 +296,14 @@ class Kvm
 			return false;
 		}
 		Vps::getLogger()->info("Changing IP on {$vzid} from {$ipOld} to {$ipNew}");
+		// If we're changing the main IP, snapshot the addon list so
+		// removeMainIp() inside removeIp() doesn't permanently drop them.
+		$hosts = Dhcpd::getHosts();
+		$dhcpMain = isset($hosts[$vzid]) ? $hosts[$vzid]['ip'] : null;
+		$recordedMain = VpsIps::getMainIp($vzid);
+		$mainIp = $dhcpMain !== null ? $dhcpMain : $recordedMain;
+		$isMain = ($mainIp === $ipOld);
+		$savedAddons = $isMain ? VpsIps::getAddonIps($ipOld) : [];
 		if (!self::removeIp($vzid, $ipOld)) {
 			Vps::getLogger()->error("removeIp({$ipOld}) failed; aborting changeIp.");
 			return false;
@@ -284,6 +311,11 @@ class Kvm
 		if (!self::addIp($vzid, $ipNew)) {
 			Vps::getLogger()->error("addIp({$ipNew}) failed after removing {$ipOld}; VPS may now have fewer IPs than before.");
 			return false;
+		}
+		if ($isMain) {
+			foreach ($savedAddons as $addon) {
+				VpsIps::addAddonIp($ipNew, $addon);
+			}
 		}
 		return true;
 	}
@@ -386,6 +418,14 @@ class Kvm
 		}
 		if ($ip != 'none') {
 			Dhcpd::setup($vzid, $ip, $mac);
+			VpsIps::setMainIp($vzid, $ip);
+			if (is_array($extraIps)) {
+				foreach ($extraIps as $extra) {
+					if ($extra != '' && $extra !== $ip) {
+						VpsIps::addAddonIp($ip, $extra);
+					}
+				}
+			}
 		}
 		if ($ipv6Ip !== false) {
 			Dhcpd6::setup($vzid, $ipv6Ip, $ipv6Range, $mac);
@@ -624,6 +664,7 @@ class Kvm
 		}
 		self::removeStorage($vzid);
 		Dhcpd::remove($vzid);
+		VpsIps::removeMainIp($vzid);
 	}
 
 	public static function installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit) {

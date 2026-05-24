@@ -35,7 +35,7 @@ Underlying phar build: `php provirted.php archive --composer=composer.json --app
 
 **Virt backends** (`app/Vps/`): `Kvm.php` (virsh/qemu-img/XML) · `Virtuozzo.php` (prlctl) · `OpenVz.php` (vzctl) · `Lxc.php` (lxc cli, br0 bridge) · `Docker.php` (docker cli, bridge/macvlan via `~/.provirted/docker.json`)
 
-**OS utilities** (`app/Os/`): `Os.php` (IP/RAM/CPU detection) · `Dhcpd.php` / `Dhcpd6.php` (DHCP config at `/etc/dhcp/dhcpd.vps` or `/etc/dhcpd.vps`) · `Xinetd.php` (VNC proxy at `/etc/xinetd.d/`)
+**OS utilities** (`app/Os/`): `Os.php` (IP/RAM/CPU detection) · `Dhcpd.php` / `Dhcpd6.php` (DHCP config at `/etc/dhcp/dhcpd.vps` or `/etc/dhcpd.vps`) · `Xinetd.php` (VNC proxy at `/etc/xinetd.d/`) · `VpsIps.php` (IP registry: `vps.mainips`/`vps.ipmap` under `Vps::$base`)
 
 **Help topics** (`app/Topic/`): `BasicTopic.php` · `ExamplesTopic.php` extend `CLIFramework\Topic\BaseTopic`
 
