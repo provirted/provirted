@@ -657,6 +657,25 @@ class Vps
 		return true;
 	}
 
+	/**
+	 * True when the template reference selects the cloud-init / virt-install path
+	 * instead of the legacy XML + qcow2 copy flow. Only meaningful for KVM.
+	 */
+	public static function isCloudInitTemplate($template) {
+		return is_string($template) && strpos($template, 'cloud-init:') === 0;
+	}
+
+	/**
+	 * Cloud-init driven KVM install — currently KVM-only. Other backends would need
+	 * their own cloud-init-ish flow if/when added; for now fall through to false.
+	 */
+	public static function installCloudInit($vzid, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
+		if (self::getVirtType() == 'kvm')
+			return Kvm::installCloudInit($vzid, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit);
+		self::getLogger()->error('cloud-init templates are only supported for the kvm backend');
+		return false;
+	}
+
 	public static function setupWebuzo($vzid) {
 		if (self::getVirtType() == 'virtuozzo')
 			Virtuozzo::setupWebuzo($vzid);

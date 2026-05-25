@@ -677,6 +677,283 @@ class Kvm
 		return $result;
 	}
 
+	/**
+	 * Resolves a cloud-init: template reference to an absolute JSON config path.
+	 * Bare names resolve under /vz/templates/cloud-init/<name>.json.
+	 * @return string|false
+	 */
+	public static function resolveCloudInitConfig($ref) {
+		if (strpos($ref, 'cloud-init:') === 0)
+			$ref = substr($ref, strlen('cloud-init:'));
+		if ($ref === '')
+			return false;
+		if ($ref[0] !== '/' && !preg_match('#^[a-zA-Z]:[\\\\/]#', $ref)) {
+			$candidate = '/vz/templates/cloud-init/'.$ref;
+			if (!file_exists($candidate) && substr($ref, -5) !== '.json')
+				$candidate .= '.json';
+			$ref = $candidate;
+		}
+		return file_exists($ref) ? $ref : false;
+	}
+
+	/**
+	 * Builds a default cloud-init user-data document. The crypt() password hash
+	 * uses SHA-512 ($6$) which all modern cloud images understand.
+	 */
+	private static function buildUserData($hostname, $password, $sshKey) {
+		$lines = [];
+		$lines[] = "#cloud-config";
+		$lines[] = "preserve_hostname: false";
+		$lines[] = "hostname: ".self::yamlScalar($hostname);
+		$lines[] = "fqdn: ".self::yamlScalar($hostname);
+		$lines[] = "manage_etc_hosts: true";
+		$lines[] = "ssh_pwauth: true";
+		$lines[] = "disable_root: false";
+		$lines[] = "chpasswd:";
+		$lines[] = "  expire: false";
+		if ($password !== '' && $password !== null) {
+			$salt = '$6$'.substr(str_replace('+', '.', base64_encode(random_bytes(12))), 0, 16);
+			$hash = crypt((string)$password, $salt);
+			$lines[] = "users:";
+			$lines[] = "  - name: root";
+			$lines[] = "    lock_passwd: false";
+			$lines[] = "    hashed_passwd: ".self::yamlScalar($hash);
+			if ($sshKey !== false && $sshKey !== '') {
+				$lines[] = "    ssh_authorized_keys:";
+				foreach (preg_split('/\r?\n/', (string)$sshKey) as $key) {
+					$key = trim($key);
+					if ($key !== '')
+						$lines[] = "      - ".self::yamlScalar($key);
+				}
+			}
+		}
+		$lines[] = "package_update: true";
+		$lines[] = "package_upgrade: false";
+		return implode("\n", $lines)."\n";
+	}
+
+	/**
+	 * Builds a default cloud-init v2 network-config for a single NIC with a static IPv4 (and optional IPv6).
+	 * mac is matched so the cloud image binds the address to the right interface regardless of kernel name.
+	 */
+	private static function buildNetworkConfig($mac, $ip, array $extraIps, $ipv6Ip, $ipv6Range) {
+		$lines = [];
+		$lines[] = "version: 2";
+		$lines[] = "ethernets:";
+		$lines[] = "  primary:";
+		if ($mac !== '' && $mac !== null) {
+			$lines[] = "    match:";
+			$lines[] = "      macaddress: ".self::yamlScalar(strtolower($mac));
+			$lines[] = "    set-name: eth0";
+		}
+		$lines[] = "    dhcp4: true";
+		$addresses = [];
+		foreach ($extraIps as $extra) {
+			if ($extra !== '' && $extra !== $ip)
+				$addresses[] = $extra.'/32';
+		}
+		if ($ipv6Ip !== false && $ipv6Ip !== '' && $ipv6Range !== false && $ipv6Range !== '')
+			$addresses[] = $ipv6Ip.'/'.$ipv6Range;
+		if (count($addresses) > 0) {
+			$lines[] = "    addresses:";
+			foreach ($addresses as $addr)
+				$lines[] = "      - ".self::yamlScalar($addr);
+		}
+		$lines[] = "    nameservers:";
+		$lines[] = "      addresses: [8.8.8.8, 1.1.1.1]";
+		return implode("\n", $lines)."\n";
+	}
+
+	/**
+	 * Quote a YAML scalar so embedded $, :, # or whitespace are safe.
+	 */
+	private static function yamlScalar($value) {
+		return "'".str_replace("'", "''", (string)$value)."'";
+	}
+
+	/**
+	 * Cloud-init driven KVM install via `virt-install --import`. Replaces the
+	 * defineVps/installTemplate/virt-customize sequence for guests that ship with
+	 * cloud-init pre-installed (Ubuntu/Debian/CentOS/Rocky cloud images, etc.).
+	 *
+	 * Config JSON schema (see /vz/templates/cloud-init/*.json):
+	 *   image          (required)  absolute path or http(s)/ftp URL to qcow2
+	 *   os_variant     (required)  passed to virt-install --os-variant
+	 *   user_data      (optional)  path to user-data YAML; auto-generated if absent
+	 *   network_config (optional)  path to network-config YAML; auto-generated if absent
+	 *   disk_format    (optional)  default 'qcow2'
+	 *   graphics       (optional)  default 'vnc'  (use 'none' for headless)
+	 *   bridge         (optional)  default 'br0'
+	 *
+	 * Storage is reused from Vps::setupStorage() (same /vz/<vzid>/os.qcow2 or /dev/vz/<vzid> path
+	 * as the XML install path) so snapshot/backup/resize tooling keeps working.
+	 */
+	public static function installCloudInit($vzid, $configRef, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
+		Vps::getLogger()->info('Installing via cloud-init (virt-install --import)');
+		Vps::getLogger()->indent();
+		$configPath = self::resolveCloudInitConfig($configRef);
+		if ($configPath === false) {
+			Vps::getLogger()->error("Cloud-init config not found: {$configRef}");
+			Vps::getLogger()->unIndent();
+			return false;
+		}
+		$raw = @file_get_contents($configPath);
+		if ($raw === false) {
+			Vps::getLogger()->error("Could not read cloud-init config {$configPath}");
+			Vps::getLogger()->unIndent();
+			return false;
+		}
+		$cfg = json_decode($raw, true);
+		if (!is_array($cfg)) {
+			Vps::getLogger()->error("Cloud-init config {$configPath} is not valid JSON: ".json_last_error_msg());
+			Vps::getLogger()->unIndent();
+			return false;
+		}
+		if (empty($cfg['image']) || empty($cfg['os_variant'])) {
+			Vps::getLogger()->error("Cloud-init config {$configPath} missing required 'image' or 'os_variant' field");
+			Vps::getLogger()->unIndent();
+			return false;
+		}
+		$image = $cfg['image'];
+		$osVariant = $cfg['os_variant'];
+		$diskFormat = isset($cfg['disk_format']) && $cfg['disk_format'] !== '' ? $cfg['disk_format'] : 'qcow2';
+		$graphics = isset($cfg['graphics']) && $cfg['graphics'] !== '' ? $cfg['graphics'] : 'vnc';
+		$bridge = isset($cfg['bridge']) && $cfg['bridge'] !== '' ? $cfg['bridge'] : 'br0';
+
+		// fetch image to a local cache path if it's a URL
+		$cleanupImage = false;
+		if (preg_match('#^(https?|ftp)://#i', $image)) {
+			$tmpDir = '/vz/templates';
+			if (!is_dir($tmpDir))
+				@mkdir($tmpDir, 0755, true);
+			$cached = $tmpDir.'/cloud-init-'.$vzid.'.'.$diskFormat;
+			Vps::getLogger()->info("Downloading {$image}");
+			Vps::getLogger()->write(Vps::runCommand("curl -fL --connect-timeout 30 -o ".escapeshellarg($cached)." ".escapeshellarg($image), $return));
+			if ($return != 0 || !file_exists($cached)) {
+				Vps::getLogger()->error("Could not download image {$image} (exit {$return})");
+				@unlink($cached);
+				Vps::getLogger()->unIndent();
+				return false;
+			}
+			$image = $cached;
+			$cleanupImage = true;
+		}
+		if (!file_exists($image)) {
+			Vps::getLogger()->error("Cloud-init image not found: {$image}");
+			Vps::getLogger()->unIndent();
+			return false;
+		}
+
+		// copy & resize image onto the storage device that Vps::setupStorage() prepared
+		Vps::getLogger()->info("Copying {$image} -> {$device}");
+		Vps::getLogger()->write(Vps::runCommand("qemu-img convert -O ".escapeshellarg($diskFormat)." ".escapeshellarg($image)." ".escapeshellarg($device), $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("qemu-img convert failed (exit {$return})");
+			if ($cleanupImage) @unlink($image);
+			Vps::getLogger()->unIndent();
+			return false;
+		}
+		if ($cleanupImage)
+			@unlink($image);
+		// resize disk to the requested capacity (hd arrives in MB; 'all' means consume the storage pool)
+		if ($hd === 'all') {
+			if ($pool === 'zfs') {
+				$avail = (int)trim(Vps::runCommand("zfs list vz -o available -H -p"));
+				$hd = (int)floor($avail / (1024 * 1024));
+				if ($hd > 2000000) $hd = 2000000;
+			}
+		}
+		if (is_numeric($hd) && (int)$hd > 0)
+			Vps::getLogger()->write(Vps::runCommand("qemu-img resize ".escapeshellarg($device)." ".((int)$hd)."M"));
+
+		// build (or load) user-data and network-config
+		$cloudDir = '/tmp/provirted-cloud-init-'.$vzid;
+		if (!is_dir($cloudDir) && !@mkdir($cloudDir, 0700, true)) {
+			Vps::getLogger()->error("Could not create cloud-init scratch dir {$cloudDir}");
+			Vps::getLogger()->unIndent();
+			return false;
+		}
+		if (!empty($cfg['user_data']) && file_exists($cfg['user_data'])) {
+			$userDataFile = $cfg['user_data'];
+		} else {
+			$userDataFile = $cloudDir.'/user-data';
+			if (@file_put_contents($userDataFile, self::buildUserData($hostname, $password, $sshKey)) === false) {
+				Vps::getLogger()->error("Could not write {$userDataFile}");
+				Vps::getLogger()->unIndent();
+				return false;
+			}
+		}
+		if (!empty($cfg['network_config']) && file_exists($cfg['network_config'])) {
+			$networkFile = $cfg['network_config'];
+		} else {
+			$networkFile = $cloudDir.'/network-config';
+			if (@file_put_contents($networkFile, self::buildNetworkConfig($mac, $ip, $extraIps, $ipv6Ip, $ipv6Range)) === false) {
+				Vps::getLogger()->error("Could not write {$networkFile}");
+				Vps::getLogger()->unIndent();
+				return false;
+			}
+		}
+
+		// build virt-install command (ram passed in KB; virt-install wants MB)
+		$ramMb = (int)max(1, floor((int)$ram / 1024));
+		$cpuN = (int)max(1, (int)$cpu);
+		$parts = [];
+		$parts[] = 'virt-install';
+		$parts[] = '--name '.escapeshellarg($vzid);
+		$parts[] = '--memory '.$ramMb;
+		$parts[] = '--vcpus '.$cpuN;
+		$parts[] = '--os-variant '.escapeshellarg($osVariant);
+		$parts[] = '--cpu host-passthrough,cache.mode=passthrough';
+		$parts[] = '--disk path='.escapeshellarg($device).',format='.escapeshellarg($diskFormat).',bus=virtio,cache=writeback,discard=unmap';
+		$netSpec = 'bridge='.$bridge;
+		if ($mac !== '' && $mac !== null)
+			$netSpec .= ',mac='.$mac;
+		$netSpec .= ',model=virtio';
+		$parts[] = '--network '.escapeshellarg($netSpec);
+		$parts[] = '--cloud-init user-data='.escapeshellarg($userDataFile).',network-config='.escapeshellarg($networkFile);
+		if ($graphics === 'none')
+			$parts[] = '--graphics none';
+		else
+			$parts[] = '--graphics '.escapeshellarg($graphics.',listen=127.0.0.1');
+		$parts[] = '--import';
+		$parts[] = '--noautoconsole';
+		$parts[] = '--wait 0';
+		$cmd = implode(' ', $parts);
+		Vps::getLogger()->info('Running virt-install');
+		Vps::getLogger()->debug($cmd);
+		Vps::getLogger()->write(Vps::runCommand($cmd, $return));
+		// scrub temp dir (leave operator-provided paths alone)
+		if (strpos($userDataFile, $cloudDir) === 0) @unlink($userDataFile);
+		if (strpos($networkFile, $cloudDir) === 0) @unlink($networkFile);
+		@rmdir($cloudDir);
+		if ($return != 0) {
+			Vps::getLogger()->error("virt-install failed for {$vzid} (exit {$return})");
+			Vps::getLogger()->unIndent();
+			return false;
+		}
+
+		// apply io/iops tuning (matches installTemplateV2)
+		if ($ioLimit !== false)
+			Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune ".escapeshellarg($vzid)." vda --total-bytes-sec ".(int)$ioLimit." --config"));
+		if ($iopsLimit !== false)
+			Vps::getLogger()->write(Vps::runCommand("virsh blkdeviotune ".escapeshellarg($vzid)." vda --total-iops-sec ".(int)$iopsLimit." --config"));
+
+		// register DHCP + IP map so DHCP, addon-ip, and rebuild commands see this VPS
+		if ($ip !== 'none' && $ip !== '' && $ip !== null) {
+			Dhcpd::setup($vzid, $ip, $mac);
+			VpsIps::setMainIp($vzid, $ip);
+			if (is_array($extraIps))
+				foreach ($extraIps as $extra)
+					if ($extra !== '' && $extra !== $ip)
+						VpsIps::addAddonIp($ip, $extra);
+		}
+		if ($ipv6Ip !== false && $ipv6Ip !== '' && $ipv6Range !== false && $ipv6Range !== '')
+			Dhcpd6::setup($vzid, $ipv6Ip, $ipv6Range, $mac);
+
+		Vps::getLogger()->unIndent();
+		return true;
+	}
+
 	public static function setupRouting($vzid, $ip, $pool, $useAll, $id) {
 		Vps::getLogger()->info('Setting up Routing');
 		if ($useAll == false) {

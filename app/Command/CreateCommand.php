@@ -30,6 +30,30 @@ HELP;
 	{$progName} create vps1001 vps2.provirted.com 192.168.1.103 centos-7 25 2048 1 password
 	{$progName} create --virt=virtuozzo vps1002 vps3.provirted.com 192.168.1.104 ubuntu-20.04 25 2048 1 password
 	{$progName} create -vv --order-id=2328714 --add-ip=192.168.1.101 --add-ip=192.168.1.102 --client-ip=127.0.0.1 --pasword=password vps1003 vps3.provirted.com 192.168.1.105 ubuntu-20.04 60 4096 2
+	{$progName} create vps1010 vps10.provirted.com 192.168.1.110 cloud-init:ubuntu-22.04 25 2048 1 password
+	{$progName} create vps1011 vps11.provirted.com 192.168.1.111 cloud-init:/etc/provirted/cloud/debian12.json 40 4096 2 password
+
+<bold>CLOUD-INIT TEMPLATES</bold>
+	Pass <bold>cloud-init:&lt;name|path&gt;</bold> as the template to install a cloud image
+	via <bold>virt-install --import</bold> with a cloud-init NoCloud datasource (kvm only).
+
+	Bare names resolve under /vz/templates/cloud-init/&lt;name&gt;.json. Required JSON
+	keys (use underscore, not hyphen):
+	  image          qcow2 path or http(s)/ftp URL
+	  os-variant     passed to virt-install (e.g. ubuntu22.04, debian12, rocky9)
+	Optional keys:
+	  user-data         path to user-data YAML file
+	  network-config    path to network-config YAML file
+	  disk-format       default qcow2
+	  graphics          default vnc (use "none" for headless)
+	  bridge            default br0
+
+	When the user-data and network-config keys are omitted, sane defaults are
+	generated from the create command arguments: hostname, root password hash,
+	any --ssh-key, and a first-boot package update.
+
+	DHCP entries and the IP map are populated the same way as the legacy install
+	path so add-ip / remove-ip / rebuild-dhcp continue to work.
 
 <underline>underlined text</underline>
 HELP;
@@ -164,26 +188,36 @@ HELP;
         $this->progress(10, $url, $orderId);
         Vps::setupStorage($vzid, $device, $pool, $hd);
         $this->progress(15, $url, $orderId);
-        if ($error == 0) {
-            if (!Vps::defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $maxRam, $maxCpu, $useAll, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit))
-                $error++;
-            else
-                $this->progress(25, $url, $orderId);
-        }
-        if ($error == 0) {
-            if (!Vps::installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit))
+        $cloudInit = Vps::isCloudInitTemplate($template);
+        if ($cloudInit) {
+            // virt-install --import handles libvirt definition AND OS install in one step,
+            // so we skip Vps::defineVps / installTemplate / virt-customize entirely.
+            if (!Vps::installCloudInit($vzid, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit))
                 $error++;
             else
                 $this->progress(70, $url, $orderId);
-            if (Vps::getVirtType() == 'kvm') {
-                $password = escapeshellarg($password);
-                $hostname = escapeshellarg($hostname);
-                $cmd = "virt-customize --no-network -d {$vzid} --root-password password:{$password} --hostname {$hostname}";
-                if ($sshKey != false) {
-                    $sshKey = escapeshellarg($sshKey);
-                    $cmd .= " --ssh-inject root:string:{$sshKey}";
+        } else {
+            if ($error == 0) {
+                if (!Vps::defineVps($vzid, $hostname, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $maxRam, $maxCpu, $useAll, $password, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit))
+                    $error++;
+                else
+                    $this->progress(25, $url, $orderId);
+            }
+            if ($error == 0) {
+                if (!Vps::installTemplate($vzid, $template, $password, $device, $pool, $hd, $kpartxOpts, $ioLimit, $iopsLimit))
+                    $error++;
+                else
+                    $this->progress(70, $url, $orderId);
+                if (Vps::getVirtType() == 'kvm') {
+                    $passwordArg = escapeshellarg($password);
+                    $hostnameArg = escapeshellarg($hostname);
+                    $cmd = "virt-customize --no-network -d {$vzid} --root-password password:{$passwordArg} --hostname {$hostnameArg}";
+                    if ($sshKey != false) {
+                        $sshKeyArg = escapeshellarg($sshKey);
+                        $cmd .= " --ssh-inject root:string:{$sshKeyArg}";
+                    }
+                    Vps::getLogger()->write(Vps::runCommand("{$cmd};"));
                 }
-                Vps::getLogger()->write(Vps::runCommand("{$cmd};"));
             }
         }
         if ($error == 0) {
