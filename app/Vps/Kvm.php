@@ -678,22 +678,170 @@ class Kvm
 	}
 
 	/**
-	 * Resolves a cloud-init: template reference to an absolute JSON config path.
-	 * Bare names resolve under /vz/templates/cloud-init/<name>.json.
-	 * @return string|false
+	 * Resolves a cloud-init: template reference to a config array.
+	 *
+	 * Two supported forms (the leading 'cloud-init:' prefix is mandatory):
+	 *   1) cloud-init:<config>          legacy JSON config form
+	 *      Bare names resolve under /vz/templates/cloudinit/<name>.json,
+	 *      absolute paths are used as-is.
+	 *   2) cloud-init:<image>:<yaml>                inline form (2 colons total)
+	 *   3) cloud-init:<image>:<os_variant>:<yaml>   inline form with explicit variant
+	 *      <image> resolves under /vz/templates/ when not absolute or a
+	 *      http(s)/ftp URL; <yaml> resolves under /vz/templates/cloudinit/
+	 *      when not absolute (empty -> auto-generated user-data). In form (2)
+	 *      os_variant is inferred from the image filename via
+	 *      self::detectOsVariant(); in form (3) the caller supplies it
+	 *      directly (use form (3) when auto-detection cannot identify the
+	 *      distro). An empty os_variant in form (3) is treated as form (2).
+	 *
+	 * Returns a normalized config array (matching the JSON schema used by
+	 * installCloudInit()) on success, false on failure.
+	 *
+	 * @return array|false
 	 */
 	public static function resolveCloudInitConfig($ref) {
 		if (strpos($ref, 'cloud-init:') === 0)
 			$ref = substr($ref, strlen('cloud-init:'));
 		if ($ref === '')
 			return false;
-		if ($ref[0] !== '/' && !preg_match('#^[a-zA-Z]:[\\\\/]#', $ref)) {
-			$candidate = '/vz/templates/cloud-init/'.$ref;
+		if (strpos($ref, ':') !== false)
+			return self::resolveCloudInitInline($ref);
+		return self::resolveCloudInitJson($ref);
+	}
+
+	/**
+	 * Legacy JSON-config form: read & decode the file, return its contents.
+	 * @return array|false
+	 */
+	private static function resolveCloudInitJson($ref) {
+		if ($ref[0] !== '/') {
+			$candidate = '/vz/templates/cloudinit/'.$ref;
 			if (!file_exists($candidate) && substr($ref, -5) !== '.json')
 				$candidate .= '.json';
 			$ref = $candidate;
 		}
-		return file_exists($ref) ? $ref : false;
+		if (!file_exists($ref)) {
+			Vps::getLogger()->error("Cloud-init config not found: {$ref}");
+			return false;
+		}
+		$raw = @file_get_contents($ref);
+		if ($raw === false) {
+			Vps::getLogger()->error("Could not read cloud-init config {$ref}");
+			return false;
+		}
+		$cfg = json_decode($raw, true);
+		if (!is_array($cfg)) {
+			Vps::getLogger()->error("Cloud-init config {$ref} is not valid JSON: ".json_last_error_msg());
+			return false;
+		}
+		if (empty($cfg['image'])) {
+			Vps::getLogger()->error("Cloud-init config {$ref} missing required 'image' field");
+			return false;
+		}
+		if (empty($cfg['os_variant'])) {
+			$detected = self::detectOsVariant($cfg['image']);
+			if ($detected === false) {
+				Vps::getLogger()->error("Cloud-init config {$ref} has no 'os_variant' and it could not be inferred from image filename '".basename($cfg['image'])."'. Set 'os_variant' in the JSON config explicitly.");
+				return false;
+			}
+			$cfg['os_variant'] = $detected;
+		}
+		return $cfg;
+	}
+
+	/**
+	 * Inline form, two shapes:
+	 *   <image>:<yaml>              (2-part) os_variant is auto-detected from
+	 *                               the image filename; errors out if it cannot.
+	 *   <image>:<os_variant>:<yaml> (3-part) os_variant is supplied explicitly.
+	 *                               Use when auto-detection fails. The middle
+	 *                               part may be left empty to fall back to
+	 *                               auto-detection (treats it like the 2-part
+	 *                               form).
+	 * yaml may be empty in either shape (auto-generate user-data).
+	 * @return array|false
+	 */
+	private static function resolveCloudInitInline($ref) {
+		$parts = explode(':', $ref, 3);
+		if (count($parts) === 2) {
+			$imageRef = trim($parts[0]);
+			$osVariant = '';
+			$yamlRef = trim($parts[1]);
+		} else {
+			$imageRef = trim($parts[0]);
+			$osVariant = trim($parts[1]);
+			$yamlRef = trim($parts[2]);
+		}
+		if ($imageRef === '') {
+			Vps::getLogger()->error('Cloud-init inline form is missing the base image');
+			return false;
+		}
+		if (!preg_match('#^(https?|ftp)://#i', $imageRef) && $imageRef[0] !== '/')
+			$imageRef = '/vz/templates/'.$imageRef;
+		if ($yamlRef !== '' && $yamlRef[0] !== '/')
+			$yamlRef = '/vz/templates/cloudinit/'.$yamlRef;
+		if ($yamlRef !== '' && !file_exists($yamlRef)) {
+			Vps::getLogger()->error("Cloud-init user-data file not found: {$yamlRef}");
+			return false;
+		}
+		if ($osVariant === '') {
+			$osVariant = self::detectOsVariant($imageRef);
+			if ($osVariant === false) {
+				Vps::getLogger()->error("Could not infer os_variant from image filename '".basename($imageRef)."'. Either use the 3-part inline form (cloud-init:<image>:<os_variant>:<yaml>) or the JSON config form (cloud-init:<config>.json) and set 'os_variant' explicitly.");
+				return false;
+			}
+		}
+		$cfg = ['image' => $imageRef, 'os_variant' => $osVariant];
+		if ($yamlRef !== '')
+			$cfg['user_data'] = $yamlRef;
+		return $cfg;
+	}
+
+	/**
+	 * Best-effort os_variant detection from a cloud image / template filename.
+	 * Returns a libosinfo short id understood by `virt-install --os-variant`,
+	 * or false. Recognizes both cloud-image style filenames
+	 * (e.g. `ubuntu-22.04-server-cloudimg-amd64.img`,
+	 *       `Rocky-9-GenericCloud-Base.latest.x86_64.qcow2`)
+	 * and the project's compact template tags
+	 * (e.g. `ubuntu26`, `ubuntu-22.04`, `debian12`, `alma10`, `almalinux-8.3`,
+	 *       `centos-7.6`, `centosstream-8`, `opensuse-tumbleweed`).
+	 */
+	public static function detectOsVariant($imagePath) {
+		$base = strtolower(basename($imagePath));
+		// Ubuntu: prefer XX.YY; fall back to bare XX (assume .04, since LTS / interim are released in April/October — .04 is the safest default for the tags shipped here).
+		if (preg_match('/ubuntu[-_]?(\d{2})\.(\d{2})/', $base, $m))
+			return 'ubuntu'.$m[1].'.'.$m[2];
+		if (preg_match('/ubuntu[-_]?(\d{2})(?!\d)/', $base, $m))
+			return 'ubuntu'.$m[1].'.04';
+		// Debian: major only
+		if (preg_match('/debian[-_]?(\d+)/', $base, $m))
+			return 'debian'.$m[1];
+		// AlmaLinux: accept both 'alma' and 'almalinux'; libosinfo ids use major only.
+		if (preg_match('/alma(?:linux)?[-_]?(\d+)/', $base, $m))
+			return 'almalinux'.$m[1];
+		// Rocky: optional minor; libosinfo ids include minor (default .0 if omitted).
+		if (preg_match('/rocky(?:linux)?[-_]?(\d+)(?:\.(\d+))?/', $base, $m))
+			return 'rocky'.$m[1].'.'.(isset($m[2]) && $m[2] !== '' ? $m[2] : '0');
+		// CentOS Stream: dash optional ('centosstream-8' / 'centos-stream-9').
+		if (preg_match('/centos[-_]?stream[-_]?(\d+)/', $base, $m))
+			return 'centos-stream'.$m[1];
+		// Plain CentOS: optional minor (default .0 if omitted).
+		if (preg_match('/centos[-_]?(\d+)(?:\.(\d+))?/', $base, $m))
+			return 'centos'.$m[1].'.'.(isset($m[2]) && $m[2] !== '' ? $m[2] : '0');
+		// Fedora: also tolerate "Fedora-Cloud-Base-NN" style filenames.
+		if (preg_match('/fedora[-_]?(?:cloud[-_]?base[-_]?)?(\d+)/', $base, $m))
+			return 'fedora'.$m[1];
+		// openSUSE Tumbleweed is a rolling release — check before the numbered Leap match.
+		if (preg_match('/opensuse[-_]?tumbleweed/', $base))
+			return 'opensusetumbleweed';
+		if (preg_match('/opensuse[-_]?(?:leap[-_]?)?(\d+)(?:\.(\d+))?/', $base, $m))
+			return 'opensuse'.$m[1].(isset($m[2]) && $m[2] !== '' ? '.'.$m[2] : '');
+		if (preg_match('/scientific(?:linux)?[-_]?(\d+)/', $base, $m))
+			return 'scientificlinux'.$m[1];
+		if (preg_match('/freebsd[-_]?(\d+)(?:\.(\d+))?/', $base, $m))
+			return 'freebsd'.$m[1].'.'.(isset($m[2]) && $m[2] !== '' ? $m[2] : '0');
+		return false;
 	}
 
 	/**
@@ -776,14 +924,21 @@ class Kvm
 	 * defineVps/installTemplate/virt-customize sequence for guests that ship with
 	 * cloud-init pre-installed (Ubuntu/Debian/CentOS/Rocky cloud images, etc.).
 	 *
-	 * Config JSON schema (see /vz/templates/cloud-init/*.json):
+	 * Config JSON schema (see /vz/templates/cloudinit/*.json):
 	 *   image          (required)  absolute path or http(s)/ftp URL to qcow2
-	 *   os_variant     (required)  passed to virt-install --os-variant
+	 *   os_variant     (optional)  passed to virt-install --os-variant; if
+	 *                              absent, inferred from the image filename
+	 *                              via detectOsVariant() and the call aborts
+	 *                              if detection fails.
 	 *   user_data      (optional)  path to user-data YAML; auto-generated if absent
 	 *   network_config (optional)  path to network-config YAML; auto-generated if absent
 	 *   disk_format    (optional)  default 'qcow2'
 	 *   graphics       (optional)  default 'vnc'  (use 'none' for headless)
 	 *   bridge         (optional)  default 'br0'
+	 *
+	 * Inline form (cloud-init:<image>:<yaml>) is resolved by
+	 * resolveCloudInitConfig() into the same schema (image + auto-detected
+	 * os_variant + optional user_data path).
 	 *
 	 * Storage is reused from Vps::setupStorage() (same /vz/<vzid>/os.qcow2 or /dev/vz/<vzid> path
 	 * as the XML install path) so snapshot/backup/resize tooling keeps working.
@@ -791,26 +946,8 @@ class Kvm
 	public static function installCloudInit($vzid, $configRef, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
 		Vps::getLogger()->info('Installing via cloud-init (virt-install --import)');
 		Vps::getLogger()->indent();
-		$configPath = self::resolveCloudInitConfig($configRef);
-		if ($configPath === false) {
-			Vps::getLogger()->error("Cloud-init config not found: {$configRef}");
-			Vps::getLogger()->unIndent();
-			return false;
-		}
-		$raw = @file_get_contents($configPath);
-		if ($raw === false) {
-			Vps::getLogger()->error("Could not read cloud-init config {$configPath}");
-			Vps::getLogger()->unIndent();
-			return false;
-		}
-		$cfg = json_decode($raw, true);
-		if (!is_array($cfg)) {
-			Vps::getLogger()->error("Cloud-init config {$configPath} is not valid JSON: ".json_last_error_msg());
-			Vps::getLogger()->unIndent();
-			return false;
-		}
-		if (empty($cfg['image']) || empty($cfg['os_variant'])) {
-			Vps::getLogger()->error("Cloud-init config {$configPath} missing required 'image' or 'os_variant' field");
+		$cfg = self::resolveCloudInitConfig($configRef);
+		if ($cfg === false) {
 			Vps::getLogger()->unIndent();
 			return false;
 		}

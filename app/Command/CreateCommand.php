@@ -32,23 +32,64 @@ HELP;
 	{$progName} create -vv --order-id=2328714 --add-ip=192.168.1.101 --add-ip=192.168.1.102 --client-ip=127.0.0.1 --pasword=password vps1003 vps3.provirted.com 192.168.1.105 ubuntu-20.04 60 4096 2
 	{$progName} create vps1010 vps10.provirted.com 192.168.1.110 cloud-init:ubuntu-22.04 25 2048 1 password
 	{$progName} create vps1011 vps11.provirted.com 192.168.1.111 cloud-init:/etc/provirted/cloud/debian12.json 40 4096 2 password
+	{$progName} create vps1012 vps12.provirted.com 192.168.1.112 cloud-init:ubuntu-22.04-server-cloudimg-amd64.img:my-user-data.yaml 25 2048 1 password
+	{$progName} create vps1013 vps13.provirted.com 192.168.1.113 cloud-init:custom.qcow2:ubuntu24.04:my-user-data.yaml 25 2048 1 password
 
 <bold>CLOUD-INIT TEMPLATES</bold>
-	Pass <bold>cloud-init:&lt;name|path&gt;</bold> as the template to install a cloud image
-	via <bold>virt-install --import</bold> with a cloud-init NoCloud datasource (kvm only).
+	Pass <bold>cloud-init:<ref></bold> as the template to install a cloud image via
+	<bold>virt-install --import</bold> with a cloud-init NoCloud datasource (kvm only).
+	Three forms are supported:
 
-	Bare names resolve under /vz/templates/cloud-init/&lt;name&gt;.json. Required JSON
-	keys (use underscore, not hyphen):
-	  image          qcow2 path or http(s)/ftp URL
-	  os-variant     passed to virt-install (e.g. ubuntu22.04, debian12, rocky9)
-	Optional keys:
-	  user-data         path to user-data YAML file
-	  network-config    path to network-config YAML file
-	  disk-format       default qcow2
-	  graphics          default vnc (use "none" for headless)
-	  bridge            default br0
+	  cloud-init:<config>                       JSON config form
+	  cloud-init:<image>:<yaml>                 2-part inline (auto-detect os_variant)
+	  cloud-init:<image>:<os_variant>:<yaml>    3-part inline (explicit os_variant)
 
-	When the user-data and network-config keys are omitted, sane defaults are
+	<bold>Template arg shapes (just the cloud-init argument)</bold>
+	  cloud-init:ubuntu-22.04                                JSON bare name -> /vz/templates/cloudinit/ubuntu-22.04.json
+	  cloud-init:/etc/provirted/cloud/debian12.json          JSON absolute path
+	  cloud-init:ubuntu-22.04.qcow2:                         2-part inline, auto os_variant, auto-gen user-data
+	  cloud-init:ubuntu-22.04.qcow2:my.yaml                  2-part inline, auto os_variant, custom user-data
+	  cloud-init:https://cloud.example.com/jammy.img:my.yaml 2-part inline, image fetched from URL
+	  cloud-init:custom.qcow2:ubuntu24.04:                   3-part inline, explicit os_variant, auto-gen user-data
+	  cloud-init:custom.qcow2:ubuntu24.04:my.yaml            3-part inline, explicit os_variant, custom user-data
+	  cloud-init:custom.qcow2::my.yaml                       3-part with empty middle = same as 2-part (auto-detect)
+
+	<bold>Path defaults</bold>
+	  <image>  - bare names resolve under /vz/templates/<image>; absolute
+	             paths and http(s)/ftp URLs are used as-is.
+	  <yaml>   - bare names resolve under /vz/templates/cloudinit/<yaml>;
+	             leave empty (trailing colon) to auto-generate user-data
+	             from the create command's hostname / password / --ssh-key.
+	  <config> - bare names resolve under /vz/templates/cloudinit/<name>.json,
+	             absolute paths are used as-is.
+
+	<bold>JSON config keys</bold> (file path or bare name resolved as above)
+	  image           required. qcow2 path or http(s)/ftp URL.
+	  os_variant      optional. Passed to virt-install (e.g. ubuntu22.04,
+	                  debian12, rocky9.0). If omitted, inferred from the
+	                  image filename — the command aborts if detection fails.
+	  user_data       optional. Path to user-data YAML file.
+	  network_config  optional. Path to network-config YAML file.
+	  disk_format     optional. Default qcow2.
+	  graphics        optional. Default vnc (use "none" for headless).
+	  bridge          optional. Default br0.
+
+	<bold>Auto-detect of os_variant</bold> (used by 2-part inline and any JSON
+	config that omits os_variant). Recognized distros from the image filename:
+	  ubuntu     ubuntu-XX.YY or bare ubuntuXX (treated as XX.04)
+	  debian     debian-N / debianN
+	  almalinux  alma-N, alma-N.M, almalinux-N, almalinuxN (major-only id)
+	  rocky      rocky-N / rocky-N.M (major.minor id, defaults .0)
+	  centos     centos-N / centos-N.M (defaults .0)
+	  centos-stream  centosstream-N or centos-stream-N
+	  fedora     fedora-N (incl. Fedora-Cloud-Base-N)
+	  opensuse   opensuse-X.Y, opensuse-leap-X.Y, opensuse-tumbleweed
+	  scientificlinux  scientificlinux-N / scientific-N
+	  freebsd    freebsd-N / freebsd-N.M (defaults .0)
+	If detection fails, switch to the 3-part inline form (image:os_variant:yaml)
+	or the JSON form with os_variant set explicitly.
+
+	When user-data / network-config are not supplied, sane defaults are
 	generated from the create command arguments: hostname, root password hash,
 	any --ssh-key, and a first-boot package update.
 
