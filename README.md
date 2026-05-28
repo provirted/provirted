@@ -4,6 +4,13 @@
 
 Easy management of Virtualization technologies including KVM, Xen, OpenVZ, Virtuozzo, and LXC/LXD including unified commands, monitoring, template management, and many more features.
 
+## Cloud Iinit
+
+- [Module reference - cloud-init 26.1 documentation](https://docs.cloud-init.io/en/latest/reference/modules.html)
+
+- [All cloud config examples - cloud-init 26.1 documentation](https://docs.cloud-init.io/en/latest/reference/examples.html)
+
+
 ## TODO
 
 * add jensuring memory limits 
