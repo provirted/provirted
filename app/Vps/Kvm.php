@@ -928,8 +928,17 @@ class Kvm
 			if ($extra !== '' && $extra !== $ip)
 				$addresses[] = $extra.'/32';
 		}
-		if ($ipv6Ip !== false && $ipv6Ip !== '' && $ipv6Range !== false && $ipv6Range !== '')
-			$addresses[] = $ipv6Ip.'/'.$ipv6Range;
+		if ($ipv6Ip !== false && $ipv6Ip !== '' && $ipv6Range !== false && $ipv6Range !== '') {
+			// --ipv6-range may arrive as a full CIDR (e.g. 2604:a00:50:11c:1::/80)
+			// or as a bare prefix length (e.g. 80). netplan wants <addr>/<prefixlen>,
+			// so take only the prefix length — otherwise we emit a malformed address
+			// like '2604:...::1/2604:...::/80' that breaks netplan apply on boot.
+			$prefix = (strpos($ipv6Range, '/') !== false)
+				? substr($ipv6Range, strrpos($ipv6Range, '/') + 1)
+				: $ipv6Range;
+			if (trim($prefix) !== '')
+				$addresses[] = $ipv6Ip.'/'.trim($prefix);
+		}
 		if (count($addresses) > 0) {
 			$lines[] = "    addresses:";
 			foreach ($addresses as $addr)
@@ -1069,14 +1078,30 @@ class Kvm
 		// Plain file ops are used so we never depend on systemd/dbus (absent in
 		// the virt-customize appliance); every command is guarded so a missing
 		// path can never abort the pass.
-		// Truncate /etc/machine-id to empty (NOT the literal "uninitialized", and
-		// leave /var/lib/dbus/machine-id alone — that symlink follows /etc and
-		// removing it can break dbus/NetworkManager startup): systemd regenerates
-		// an empty machine-id very early in boot, before networking comes up, so
-		// the next boot looks like a new machine (re-triggering cloud-init past
-		// its machine-id "already ran" gate) without disturbing the network stack.
+		// Ubuntu live/server (subiquity) images disable cloud-init after install
+		// with two artifacts that BOTH have to go (confirmed by inspecting such an
+		// image): the marker file /etc/cloud/cloud-init.disabled, which makes
+		// ds-identify bail with "disabled by marker file", AND
+		// /etc/cloud/cloud.cfg.d/99-installer.cfg, which pins
+		// `datasource_list: [None]` and embeds the installer's own user-data — so
+		// even with the marker gone cloud-init stays on the None datasource and
+		// never reads our attached NoCloud (cidata) seed. Removing just the marker
+		// is not enough. Subiquity ships /etc/cloud/clean.d/99-installer listing
+		// exactly the files `cloud-init clean` deletes to re-enable; we replicate
+		// that offline (verified: afterwards ds-identify reports
+		// "Found single datasource: NoCloud"). Also clear stale per-instance state
+		// and reset /etc/machine-id (empty, so systemd regenerates it early in
+		// boot — do NOT write "uninitialized" or touch /var/lib/dbus/machine-id,
+		// which breaks dbus/NetworkManager and the network with it).
+		$installerArtifacts = implode(' ', [
+			'/etc/cloud/cloud-init.disabled',
+			'/etc/cloud/cloud.cfg.d/99-installer.cfg',
+			'/etc/cloud/cloud.cfg.d/90-installer-network.cfg',
+			'/etc/cloud/cloud.cfg.d/20-disable-cc-dpkg-grub.cfg',
+			'/etc/cloud/ds-identify.cfg',
+		]);
 		$reset = 'virt-customize --no-network -a '.escapeshellarg($device)
-			." --run-command ".escapeshellarg('rm -f /etc/cloud/cloud-init.disabled /etc/cloud/cloud-init.disabled.d/* 2>/dev/null || true')
+			." --run-command ".escapeshellarg('rm -f '.$installerArtifacts.' 2>/dev/null || true')
 			." --run-command ".escapeshellarg('rm -rf /var/lib/cloud/instance /var/lib/cloud/instances /var/lib/cloud/sem /var/lib/cloud/data 2>/dev/null || true')
 			." --run-command ".escapeshellarg(': > /etc/machine-id 2>/dev/null || true');
 		Vps::getLogger()->info('Re-enabling cloud-init (reset machine-id + clear state) so the seed runs on first boot');
