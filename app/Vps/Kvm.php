@@ -845,6 +845,16 @@ class Kvm
 	}
 
 	/**
+	 * Hash a plaintext password with SHA-512 ($6$), the crypt scheme every
+	 * modern cloud image understands. The salt is drawn from random_bytes()
+	 * and trimmed to the 16-char crypt salt window.
+	 */
+	private static function cryptPassword($password) {
+		$salt = '$6$'.substr(str_replace('+', '.', base64_encode(random_bytes(12))), 0, 16);
+		return crypt((string)$password, $salt);
+	}
+
+	/**
 	 * Builds a default cloud-init user-data document. The crypt() password hash
 	 * uses SHA-512 ($6$) which all modern cloud images understand.
 	 */
@@ -860,12 +870,10 @@ class Kvm
 		$lines[] = "chpasswd:";
 		$lines[] = "  expire: false";
 		if ($password !== '' && $password !== null) {
-			$salt = '$6$'.substr(str_replace('+', '.', base64_encode(random_bytes(12))), 0, 16);
-			$hash = crypt((string)$password, $salt);
 			$lines[] = "users:";
 			$lines[] = "  - name: root";
 			$lines[] = "    lock_passwd: false";
-			$lines[] = "    hashed_passwd: ".self::yamlScalar($hash);
+			$lines[] = "    hashed_passwd: ".self::yamlScalar(self::cryptPassword($password));
 			if ($sshKey !== false && $sshKey !== '') {
 				$lines[] = "    ssh_authorized_keys:";
 				foreach (preg_split('/\r?\n/', (string)$sshKey) as $key) {
@@ -917,6 +925,98 @@ class Kvm
 	 */
 	private static function yamlScalar($value) {
 		return "'".str_replace("'", "''", (string)$value)."'";
+	}
+
+	/**
+	 * Builds a credentials-only #cloud-config fragment (root password + ssh
+	 * keys) carrying cloud-init `merge_how` headers so it can be layered on top
+	 * of an operator-supplied user-data file via MIME multipart and still win.
+	 *
+	 * merge_how makes this fragment authoritative: dict `recurse_list` descends
+	 * into list-valued keys (so the `users` lists from each part concatenate
+	 * rather than one clobbering the other) and scalar leaves are replaced by
+	 * ours; list `append` adds our `- name: root` entry — cloud-init's users
+	 * module then applies the last root definition, so the CLI password/keys
+	 * override whatever the operator's file set for root.
+	 *
+	 * Returns '' when there is nothing to inject (no password and no ssh key).
+	 */
+	private static function buildCredentialsCloudConfig($password, $sshKey) {
+		$hasPassword = ($password !== '' && $password !== null);
+		$hasKey = ($sshKey !== false && $sshKey !== '' && $sshKey !== null);
+		if (!$hasPassword && !$hasKey)
+			return '';
+		$lines = [];
+		$lines[] = "#cloud-config";
+		$lines[] = "merge_how:";
+		$lines[] = "- name: dict";
+		$lines[] = "  settings: [recurse_list]";
+		$lines[] = "- name: list";
+		$lines[] = "  settings: [append]";
+		$lines[] = "ssh_pwauth: true";
+		$lines[] = "disable_root: false";
+		if ($hasPassword) {
+			$lines[] = "chpasswd:";
+			$lines[] = "  expire: false";
+		}
+		$lines[] = "users:";
+		$lines[] = "  - name: root";
+		$lines[] = "    lock_passwd: false";
+		if ($hasPassword)
+			$lines[] = "    hashed_passwd: ".self::yamlScalar(self::cryptPassword($password));
+		if ($hasKey) {
+			$lines[] = "    ssh_authorized_keys:";
+			foreach (preg_split('/\r?\n/', (string)$sshKey) as $key) {
+				$key = trim($key);
+				if ($key !== '')
+					$lines[] = "      - ".self::yamlScalar($key);
+			}
+		}
+		return implode("\n", $lines)."\n";
+	}
+
+	/**
+	 * Detect the cloud-init MIME subtype for an operator-supplied user-data blob
+	 * from its leading marker line, so it can be embedded in a multipart
+	 * document without changing how cloud-init interprets it. Defaults to
+	 * text/cloud-config (the common case).
+	 */
+	private static function cloudInitPartType($body) {
+		$trim = ltrim((string)$body);
+		if (strncmp($trim, '#!', 2) === 0)
+			return 'text/x-shellscript';
+		if (strncmp($trim, '#cloud-boothook', 15) === 0)
+			return 'text/cloud-boothook';
+		if (strncmp($trim, '#cloud-config-archive', 21) === 0)
+			return 'text/cloud-config-archive';
+		if (strncmp($trim, '#include', 8) === 0)
+			return 'text/x-include-url';
+		return 'text/cloud-config';
+	}
+
+	/**
+	 * Wrap one or more cloud-init parts into a multipart/mixed user-data
+	 * document so an operator-supplied user-data file and an auto-generated
+	 * credentials cloud-config can be delivered together. Each $parts entry is
+	 * ['type' => <mime subtype>, 'body' => <string>]; parts are merged by
+	 * cloud-init in order, so place the authoritative fragment last.
+	 */
+	private static function buildMultipartUserData(array $parts) {
+		$boundary = '===============provirted'.bin2hex(random_bytes(8)).'==';
+		$out = [];
+		$out[] = 'Content-Type: multipart/mixed; boundary="'.$boundary.'"';
+		$out[] = 'MIME-Version: 1.0';
+		$out[] = '';
+		foreach ($parts as $part) {
+			$out[] = '--'.$boundary;
+			$out[] = 'Content-Type: '.$part['type'].'; charset="utf-8"';
+			$out[] = 'MIME-Version: 1.0';
+			$out[] = '';
+			$out[] = rtrim((string)$part['body'], "\n");
+		}
+		$out[] = '--'.$boundary.'--';
+		$out[] = '';
+		return implode("\n", $out);
 	}
 
 	/**
@@ -1011,7 +1111,31 @@ class Kvm
 			return false;
 		}
 		if (!empty($cfg['user_data']) && file_exists($cfg['user_data'])) {
-			$userDataFile = $cfg['user_data'];
+			// Operator supplied their own user-data. Layer the CLI
+			// --password/--ssh-key on top as an authoritative multipart part so
+			// they still take effect (a bare file would otherwise drop them).
+			$creds = self::buildCredentialsCloudConfig($password, $sshKey);
+			if ($creds === '') {
+				$userDataFile = $cfg['user_data'];
+			} else {
+				$operator = @file_get_contents($cfg['user_data']);
+				if ($operator === false) {
+					Vps::getLogger()->error("Could not read user-data file {$cfg['user_data']}");
+					Vps::getLogger()->unIndent();
+					return false;
+				}
+				Vps::getLogger()->info('Layering CLI --password/--ssh-key onto operator user-data (multipart)');
+				$userDataFile = $cloudDir.'/user-data';
+				$merged = self::buildMultipartUserData([
+					['type' => self::cloudInitPartType($operator), 'body' => $operator],
+					['type' => 'text/cloud-config', 'body' => $creds],
+				]);
+				if (@file_put_contents($userDataFile, $merged) === false) {
+					Vps::getLogger()->error("Could not write {$userDataFile}");
+					Vps::getLogger()->unIndent();
+					return false;
+				}
+			}
 		} else {
 			$userDataFile = $cloudDir.'/user-data';
 			if (@file_put_contents($userDataFile, self::buildUserData($hostname, $password, $sshKey)) === false) {

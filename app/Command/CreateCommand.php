@@ -68,7 +68,8 @@ HELP;
 	  os_variant      optional. Passed to virt-install (e.g. ubuntu22.04,
 	                  debian12, rocky9.0). If omitted, inferred from the
 	                  image filename — the command aborts if detection fails.
-	  user_data       optional. Path to user-data YAML file.
+	  user_data       optional. Path to user-data YAML file. The CLI password
+	                  and --ssh-key are still layered on top (see below).
 	  network_config  optional. Path to network-config YAML file.
 	  disk_format     optional. Default qcow2.
 	  graphics        optional. Default vnc (use "none" for headless).
@@ -92,6 +93,12 @@ HELP;
 	When user-data / network-config are not supplied, sane defaults are
 	generated from the create command arguments: hostname, root password hash,
 	any --ssh-key, and a first-boot package update.
+
+	When you DO supply your own user-data, the create command's password and
+	--ssh-key are layered onto it via a multipart/mixed user-data document with
+	cloud-init merge headers, so they remain authoritative for root regardless
+	of what the file sets. To suppress that and use the file verbatim, omit the
+	password argument and --ssh-key.
 
 	DHCP entries and the IP map are populated the same way as the legacy install
 	path so add-ip / remove-ip / rebuild-dhcp continue to work.
