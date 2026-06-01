@@ -1053,19 +1053,29 @@ class Kvm
 		}
 
 		// Make sure cloud-init will actually process the seed we attach below.
-		// Custom/golden base images are routinely sealed with cloud-init disabled
-		// (/etc/cloud/cloud-init.disabled) and/or with stale per-instance state in
-		// /var/lib/cloud, either of which makes cloud-init silently ignore the
-		// attached NoCloud seed — so the operator's user-data (packages, runcmd,
-		// write_files, etc.) never runs even though the seed is present. Re-enable
-		// cloud-init and clear its prior state offline so the next boot is treated
-		// as a fresh instance. Done with plain rm (no dependency on the cloud-init
-		// binary or systemd, which are not available in the virt-customize
-		// appliance) and guarded so a missing path can never abort the pass.
+		// Ubuntu live/server (subiquity) images disable cloud-init after their
+		// first boot and key that "already done" state to /etc/machine-id — so a
+		// cloned image keeps the same machine-id, cloud-init decides it has
+		// nothing to do, loads its own fallback config and silently ignores the
+		// NoCloud seed (the operator's packages/runcmd/write_files never run).
+		// `cloud-init clean --machine-id` is the documented re-enable; it resets
+		// /etc/machine-id to "uninitialized" so the next boot looks like a brand
+		// new machine and cloud-init runs in full. We replicate that offline:
+		//   - drop the legacy disable marker (older images),
+		//   - clear stale per-instance state under /var/lib/cloud,
+		//   - reset /etc/machine-id (the key step) and the dbus machine-id so they
+		//     are regenerated on first boot,
+		//   - and, if the guest has the cloud-init binary, run the real clean too.
+		// Plain file ops are used so we never depend on systemd/dbus (absent in
+		// the virt-customize appliance); every command is guarded so a missing
+		// path can never abort the pass.
 		$reset = 'virt-customize --no-network -a '.escapeshellarg($device)
-			." --run-command ".escapeshellarg('rm -f /etc/cloud/cloud-init.disabled || true')
-			." --run-command ".escapeshellarg('rm -rf /var/lib/cloud/instance /var/lib/cloud/instances /var/lib/cloud/sem /var/lib/cloud/data 2>/dev/null || true');
-		Vps::getLogger()->info('Re-enabling cloud-init and clearing prior state so the seed runs on first boot');
+			." --run-command ".escapeshellarg('rm -f /etc/cloud/cloud-init.disabled /etc/cloud/cloud-init.disabled.d/* 2>/dev/null || true')
+			." --run-command ".escapeshellarg('rm -rf /var/lib/cloud/instance /var/lib/cloud/instances /var/lib/cloud/sem /var/lib/cloud/data 2>/dev/null || true')
+			." --run-command ".escapeshellarg('printf "uninitialized\n" > /etc/machine-id 2>/dev/null || true')
+			." --run-command ".escapeshellarg('rm -f /var/lib/dbus/machine-id 2>/dev/null || true')
+			." --run-command ".escapeshellarg('command -v cloud-init >/dev/null 2>&1 && cloud-init clean --logs --machine-id >/dev/null 2>&1 || true');
+		Vps::getLogger()->info('Re-enabling cloud-init (reset machine-id + clear state) so the seed runs on first boot');
 		Vps::getLogger()->write(Vps::runCommand($reset, $return));
 		if ($return != 0)
 			Vps::getLogger()->warn("cloud-init state reset reported exit {$return}; supplied user-data may not run on first boot (is cloud-init installed in the base image?)");
