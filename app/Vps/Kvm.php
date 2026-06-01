@@ -457,19 +457,39 @@ class Kvm
 	}
 
 	public static function getVpsRemotes($vzid) {
-		$xml = self::getVpsXml($vzid);
-		$remotes = [];
-		if (preg_match_all('/<graphics type=\'([^\']+)\'\s?.*\sport=\'([^\']+)\'/muU', $xml, $matches)) {
-			foreach ($matches[1] as $idx => $type) {
-				$port = $matches[2][$idx];
-				if (is_numeric($port))
-					$port = intval($port);
-				if (in_array($port, ['-1', '' ,'0']))
-					continue;
-				$remotes[$type] = $port;
+		$vzidArg = escapeshellarg($vzid);
+		$attempts = 0;
+		$maxAttempts = 10;
+		while (true) {
+			$xml = self::getVpsXml($vzid);
+			$remotes = [];
+			$hasGraphics = (bool) preg_match_all('/<graphics type=\'([^\']+)\'\s?.*\sport=\'([^\']+)\'/muU', $xml, $matches);
+			if ($hasGraphics) {
+				foreach ($matches[1] as $idx => $type) {
+					$port = $matches[2][$idx];
+					if (is_numeric($port))
+						$port = intval($port);
+					if (in_array($port, ['-1', '' ,'0']))
+						continue;
+					$remotes[$type] = $port;
+				}
 			}
+			// libvirt only allocates the autoport VNC/SPICE port a moment after
+			// the domain starts. Right after create (virt-install --wait 0, or a
+			// fresh startVps) the live XML can still show port='-1', so a single
+			// read returns nothing and setupVnc() configures no proxy — which is
+			// why VNC only worked after a later manual `vnc setup`. Wait for the
+			// port to resolve while the domain is running; return immediately
+			// once a real port appears, when there is no graphics device, or when
+			// the domain is not running (a stopped VPS has no live port).
+			if (count($remotes) === 0 && $hasGraphics && $attempts < $maxAttempts
+					&& trim(Vps::runCommand("virsh domstate {$vzidArg} 2>/dev/null")) === 'running') {
+				$attempts++;
+				sleep(1);
+				continue;
+			}
+			return $remotes;
 		}
-		return $remotes;
 	}
 
 	public static function getVncPort($vzid) {
