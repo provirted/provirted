@@ -964,10 +964,15 @@ class Kvm
 	 * through untouched (they are not YAML). A #cloud-config must parse to a
 	 * mapping (top-level dict) — anything else is a syntax error or wrong shape.
 	 *
-	 * Validation degrades gracefully by what the host provides:
-	 *   1. the php-yaml extension (in-process), else
-	 *   2. python3 + PyYAML (shelled out), else
-	 *   3. no validator -> warn and accept (never block an install just because
+	 * Validator preference (php-yaml first, as it is the most reliable here):
+	 *   1. the php-yaml extension in-process, else
+	 *   2. try to install php-yaml (apt/dnf/yum) and validate via a fresh `php`
+	 *      subprocess (the freshly installed extension is auto-enabled for CLI),
+	 *      else
+	 *   3. python3 + PyYAML — but ONLY when PyYAML is actually importable, so a
+	 *      missing module is treated as "no validator" rather than a false
+	 *      "invalid YAML" verdict, else
+	 *   4. no validator -> warn and accept (never block an install just because
 	 *      the host lacks a YAML parser).
 	 *
 	 * @return bool false only on a definitive parse failure / unreadable file.
@@ -982,27 +987,80 @@ class Kvm
 			Vps::getLogger()->info2("user-data {$path} is not a #cloud-config document; skipping YAML validation");
 			return true;
 		}
+		// 1. in-process php-yaml
 		if (function_exists('yaml_parse')) {
-			$parsed = @yaml_parse($content);
-			if (!is_array($parsed)) {
-				Vps::getLogger()->error("Cloud-init user-data {$path} is not valid YAML (or its top level is not a mapping); aborting.");
-				return false;
-			}
-			Vps::getLogger()->info2("user-data {$path} passed YAML validation (php-yaml)");
-			return true;
+			$ok = is_array(@yaml_parse($content));
+			return self::userDataYamlVerdict($ok ? 0 : 1, $path, 'php-yaml');
 		}
-		if (trim(Vps::runCommand('command -v python3 2>/dev/null')) !== '') {
-			$pathArg = escapeshellarg($path);
-			Vps::runCommand("python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]).read())' {$pathArg} 2>/dev/null", $return);
-			if ($return != 0) {
-				Vps::getLogger()->error("Cloud-init user-data {$path} failed YAML validation (python3 yaml); aborting.");
-				return false;
-			}
-			Vps::getLogger()->info2("user-data {$path} passed YAML validation (python3)");
-			return true;
-		}
-		Vps::getLogger()->warn("No YAML validator available (php-yaml extension or python3); skipping validation of {$path}");
+		// 2. install php-yaml and validate through a fresh php subprocess
+		Vps::getLogger()->info2('php-yaml extension not loaded; attempting to install it');
+		self::installPhpYaml();
+		$rc = self::phpYamlCheck($path);
+		if ($rc === 0 || $rc === 1)
+			return self::userDataYamlVerdict($rc, $path, 'php-yaml');
+		// 3. python3 + PyYAML, only when the module is importable
+		$rc = self::pythonYamlCheck($path);
+		if ($rc === 0 || $rc === 1)
+			return self::userDataYamlVerdict($rc, $path, 'python3');
+		// 4. nothing usable
+		Vps::getLogger()->warn("No YAML validator available (php-yaml or python3+PyYAML); skipping validation of {$path}");
 		return true;
+	}
+
+	/** Log + map a 0(valid)/1(invalid) YAML result to a bool for validateUserDataFile(). */
+	private static function userDataYamlVerdict($code, $path, $via) {
+		if ($code === 0) {
+			Vps::getLogger()->info2("user-data {$path} passed YAML validation ({$via})");
+			return true;
+		}
+		Vps::getLogger()->error("Cloud-init user-data {$path} is not valid YAML (or its top level is not a mapping); aborting. [{$via}]");
+		return false;
+	}
+
+	/** Best-effort install of the php-yaml extension using whichever package manager exists. */
+	private static function installPhpYaml() {
+		if (trim(Vps::runCommand('command -v apt-get 2>/dev/null')) !== '') {
+			Vps::getLogger()->info('Installing php-yaml via apt-get');
+			Vps::getLogger()->write(Vps::runCommand('DEBIAN_FRONTEND=noninteractive apt-get install -y php-yaml 2>&1', $r));
+		} elseif (trim(Vps::runCommand('command -v dnf 2>/dev/null')) !== '') {
+			Vps::getLogger()->info('Installing php-yaml via dnf (php-pecl-yaml)');
+			Vps::getLogger()->write(Vps::runCommand('dnf install -y php-pecl-yaml 2>&1', $r));
+		} elseif (trim(Vps::runCommand('command -v yum 2>/dev/null')) !== '') {
+			Vps::getLogger()->info('Installing php-yaml via yum (php-pecl-yaml)');
+			Vps::getLogger()->write(Vps::runCommand('yum install -y php-pecl-yaml 2>&1', $r));
+		} else {
+			Vps::getLogger()->info2('no apt/dnf/yum found; cannot auto-install php-yaml');
+		}
+	}
+
+	/**
+	 * Validate YAML through a fresh `php` CLI subprocess (picks up a php-yaml
+	 * extension that was just installed and auto-enabled for CLI).
+	 * @return int 0 valid, 1 invalid, -1 php/yaml-ext unavailable.
+	 */
+	private static function phpYamlCheck($path) {
+		if (trim(Vps::runCommand('command -v php 2>/dev/null')) === '')
+			return -1;
+		$script = 'if(!function_exists("yaml_parse")){exit(3);} $d=@yaml_parse(file_get_contents($argv[1])); exit(is_array($d)?0:1);';
+		Vps::runCommand("php -r '".$script."' ".escapeshellarg($path)." 2>/dev/null", $r);
+		if ($r === 0) return 0;
+		if ($r === 1) return 1;
+		return -1; // 3 = no extension (or any other failure) -> unavailable
+	}
+
+	/**
+	 * Validate YAML with python3 + PyYAML, distinguishing a missing module
+	 * (unavailable) from an actual parse failure (invalid).
+	 * @return int 0 valid, 1 invalid, -1 python3/PyYAML unavailable.
+	 */
+	private static function pythonYamlCheck($path) {
+		if (trim(Vps::runCommand('command -v python3 2>/dev/null')) === '')
+			return -1;
+		Vps::runCommand('python3 -c "import yaml" 2>/dev/null', $rmod);
+		if ($rmod != 0)
+			return -1; // PyYAML not installed -> not a YAML verdict
+		Vps::runCommand('python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]).read())" '.escapeshellarg($path).' 2>/dev/null', $rparse);
+		return ($rparse == 0) ? 0 : 1;
 	}
 
 	/**
