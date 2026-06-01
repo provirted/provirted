@@ -948,98 +948,6 @@ class Kvm
 	}
 
 	/**
-	 * Builds a credentials-only #cloud-config fragment (root password + ssh
-	 * keys) carrying cloud-init `merge_how` headers so it can be layered on top
-	 * of an operator-supplied user-data file via MIME multipart and still win.
-	 *
-	 * merge_how makes this fragment authoritative: dict `recurse_list` descends
-	 * into list-valued keys (so the `users` lists from each part concatenate
-	 * rather than one clobbering the other) and scalar leaves are replaced by
-	 * ours; list `append` adds our `- name: root` entry — cloud-init's users
-	 * module then applies the last root definition, so the CLI password/keys
-	 * override whatever the operator's file set for root.
-	 *
-	 * Returns '' when there is nothing to inject (no password and no ssh key).
-	 */
-	private static function buildCredentialsCloudConfig($password, $sshKey) {
-		$hasPassword = ($password !== '' && $password !== null);
-		$hasKey = ($sshKey !== false && $sshKey !== '' && $sshKey !== null);
-		if (!$hasPassword && !$hasKey)
-			return '';
-		$lines = [];
-		$lines[] = "#cloud-config";
-		$lines[] = "merge_how:";
-		$lines[] = "- name: dict";
-		$lines[] = "  settings: [recurse_list]";
-		$lines[] = "- name: list";
-		$lines[] = "  settings: [append]";
-		$lines[] = "ssh_pwauth: true";
-		$lines[] = "disable_root: false";
-		if ($hasPassword) {
-			$lines[] = "chpasswd:";
-			$lines[] = "  expire: false";
-		}
-		$lines[] = "users:";
-		$lines[] = "  - name: root";
-		$lines[] = "    lock_passwd: false";
-		if ($hasPassword)
-			$lines[] = "    hashed_passwd: ".self::yamlScalar(self::cryptPassword($password));
-		if ($hasKey) {
-			$lines[] = "    ssh_authorized_keys:";
-			foreach (preg_split('/\r?\n/', (string)$sshKey) as $key) {
-				$key = trim($key);
-				if ($key !== '')
-					$lines[] = "      - ".self::yamlScalar($key);
-			}
-		}
-		return implode("\n", $lines)."\n";
-	}
-
-	/**
-	 * Detect the cloud-init MIME subtype for an operator-supplied user-data blob
-	 * from its leading marker line, so it can be embedded in a multipart
-	 * document without changing how cloud-init interprets it. Defaults to
-	 * text/cloud-config (the common case).
-	 */
-	private static function cloudInitPartType($body) {
-		$trim = ltrim((string)$body);
-		if (strncmp($trim, '#!', 2) === 0)
-			return 'text/x-shellscript';
-		if (strncmp($trim, '#cloud-boothook', 15) === 0)
-			return 'text/cloud-boothook';
-		if (strncmp($trim, '#cloud-config-archive', 21) === 0)
-			return 'text/cloud-config-archive';
-		if (strncmp($trim, '#include', 8) === 0)
-			return 'text/x-include-url';
-		return 'text/cloud-config';
-	}
-
-	/**
-	 * Wrap one or more cloud-init parts into a multipart/mixed user-data
-	 * document so an operator-supplied user-data file and an auto-generated
-	 * credentials cloud-config can be delivered together. Each $parts entry is
-	 * ['type' => <mime subtype>, 'body' => <string>]; parts are merged by
-	 * cloud-init in order, so place the authoritative fragment last.
-	 */
-	private static function buildMultipartUserData(array $parts) {
-		$boundary = '===============provirted'.bin2hex(random_bytes(8)).'==';
-		$out = [];
-		$out[] = 'Content-Type: multipart/mixed; boundary="'.$boundary.'"';
-		$out[] = 'MIME-Version: 1.0';
-		$out[] = '';
-		foreach ($parts as $part) {
-			$out[] = '--'.$boundary;
-			$out[] = 'Content-Type: '.$part['type'].'; charset="utf-8"';
-			$out[] = 'MIME-Version: 1.0';
-			$out[] = '';
-			$out[] = rtrim((string)$part['body'], "\n");
-		}
-		$out[] = '--'.$boundary.'--';
-		$out[] = '';
-		return implode("\n", $out);
-	}
-
-	/**
 	 * Cloud-init driven KVM install via `virt-install --import`. Replaces the
 	 * defineVps/installTemplate/virt-customize sequence for guests that ship with
 	 * cloud-init pre-installed (Ubuntu/Debian/CentOS/Rocky cloud images, etc.).
@@ -1144,6 +1052,24 @@ class Kvm
 				Vps::getLogger()->warn("virt-customize could not set the root password (exit {$return}); falling back to cloud-init user-data only");
 		}
 
+		// Make sure cloud-init will actually process the seed we attach below.
+		// Custom/golden base images are routinely sealed with cloud-init disabled
+		// (/etc/cloud/cloud-init.disabled) and/or with stale per-instance state in
+		// /var/lib/cloud, either of which makes cloud-init silently ignore the
+		// attached NoCloud seed — so the operator's user-data (packages, runcmd,
+		// write_files, etc.) never runs even though the seed is present. Re-enable
+		// cloud-init and clear its prior state offline so the next boot is treated
+		// as a fresh instance. Done with plain rm (no dependency on the cloud-init
+		// binary or systemd, which are not available in the virt-customize
+		// appliance) and guarded so a missing path can never abort the pass.
+		$reset = 'virt-customize --no-network -a '.escapeshellarg($device)
+			." --run-command ".escapeshellarg('rm -f /etc/cloud/cloud-init.disabled || true')
+			." --run-command ".escapeshellarg('rm -rf /var/lib/cloud/instance /var/lib/cloud/instances /var/lib/cloud/sem /var/lib/cloud/data 2>/dev/null || true');
+		Vps::getLogger()->info('Re-enabling cloud-init and clearing prior state so the seed runs on first boot');
+		Vps::getLogger()->write(Vps::runCommand($reset, $return));
+		if ($return != 0)
+			Vps::getLogger()->warn("cloud-init state reset reported exit {$return}; supplied user-data may not run on first boot (is cloud-init installed in the base image?)");
+
 		// build (or load) user-data and network-config
 		$cloudDir = '/tmp/provirted-cloud-init-'.$vzid;
 		if (!is_dir($cloudDir) && !@mkdir($cloudDir, 0700, true)) {
@@ -1152,31 +1078,13 @@ class Kvm
 			return false;
 		}
 		if (!empty($cfg['user_data']) && file_exists($cfg['user_data'])) {
-			// Operator supplied their own user-data. Layer the CLI
-			// --password/--ssh-key on top as an authoritative multipart part so
-			// they still take effect (a bare file would otherwise drop them).
-			$creds = self::buildCredentialsCloudConfig($password, $sshKey);
-			if ($creds === '') {
-				$userDataFile = $cfg['user_data'];
-			} else {
-				$operator = @file_get_contents($cfg['user_data']);
-				if ($operator === false) {
-					Vps::getLogger()->error("Could not read user-data file {$cfg['user_data']}");
-					Vps::getLogger()->unIndent();
-					return false;
-				}
-				Vps::getLogger()->info('Layering CLI --password/--ssh-key onto operator user-data (multipart)');
-				$userDataFile = $cloudDir.'/user-data';
-				$merged = self::buildMultipartUserData([
-					['type' => self::cloudInitPartType($operator), 'body' => $operator],
-					['type' => 'text/cloud-config', 'body' => $creds],
-				]);
-				if (@file_put_contents($userDataFile, $merged) === false) {
-					Vps::getLogger()->error("Could not write {$userDataFile}");
-					Vps::getLogger()->unIndent();
-					return false;
-				}
-			}
+			// Operator supplied their own user-data: hand it to cloud-init exactly
+			// as written. The CLI --password/--ssh-key are already applied directly
+			// to the image by virt-customize above, so there is nothing to inject
+			// here — and passing the file verbatim (rather than wrapping it in a
+			// generated MIME-multipart with merge headers) guarantees cloud-init
+			// processes the operator's config unaltered.
+			$userDataFile = $cfg['user_data'];
 		} else {
 			$userDataFile = $cloudDir.'/user-data';
 			if (@file_put_contents($userDataFile, self::buildUserData($hostname, $password, $sshKey)) === false) {
