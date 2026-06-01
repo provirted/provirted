@@ -1069,12 +1069,16 @@ class Kvm
 		// Plain file ops are used so we never depend on systemd/dbus (absent in
 		// the virt-customize appliance); every command is guarded so a missing
 		// path can never abort the pass.
+		// Truncate /etc/machine-id to empty (NOT the literal "uninitialized", and
+		// leave /var/lib/dbus/machine-id alone — that symlink follows /etc and
+		// removing it can break dbus/NetworkManager startup): systemd regenerates
+		// an empty machine-id very early in boot, before networking comes up, so
+		// the next boot looks like a new machine (re-triggering cloud-init past
+		// its machine-id "already ran" gate) without disturbing the network stack.
 		$reset = 'virt-customize --no-network -a '.escapeshellarg($device)
 			." --run-command ".escapeshellarg('rm -f /etc/cloud/cloud-init.disabled /etc/cloud/cloud-init.disabled.d/* 2>/dev/null || true')
 			." --run-command ".escapeshellarg('rm -rf /var/lib/cloud/instance /var/lib/cloud/instances /var/lib/cloud/sem /var/lib/cloud/data 2>/dev/null || true')
-			." --run-command ".escapeshellarg('printf "uninitialized\n" > /etc/machine-id 2>/dev/null || true')
-			." --run-command ".escapeshellarg('rm -f /var/lib/dbus/machine-id 2>/dev/null || true')
-			." --run-command ".escapeshellarg('command -v cloud-init >/dev/null 2>&1 && cloud-init clean --logs --machine-id >/dev/null 2>&1 || true');
+			." --run-command ".escapeshellarg(': > /etc/machine-id 2>/dev/null || true');
 		Vps::getLogger()->info('Re-enabling cloud-init (reset machine-id + clear state) so the seed runs on first boot');
 		Vps::getLogger()->write(Vps::runCommand($reset, $return));
 		if ($return != 0)
