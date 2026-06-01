@@ -68,7 +68,9 @@ HELP;
 	  os_variant      optional. Passed to virt-install (e.g. ubuntu22.04,
 	                  debian12, rocky9.0). If omitted, inferred from the
 	                  image filename — the command aborts if detection fails.
-	  user_data       optional. Path to user-data YAML file, used verbatim.
+	  user_data       optional. Path to user-data YAML file, used verbatim. A
+	                  #cloud-config file is YAML-validated up front; a syntax
+	                  error aborts the create before the image is touched.
 	  network_config  optional. Path to network-config YAML file.
 	  disk_format     optional. Default qcow2.
 	  graphics        optional. Default vnc (use "none" for headless).

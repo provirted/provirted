@@ -957,6 +957,55 @@ class Kvm
 	}
 
 	/**
+	 * Best-effort validation of an operator-supplied cloud-init user-data file.
+	 *
+	 * Only #cloud-config payloads are YAML, so those are syntax-checked; shell
+	 * scripts (#!), cloud-boothooks, #include lists and MIME multipart are passed
+	 * through untouched (they are not YAML). A #cloud-config must parse to a
+	 * mapping (top-level dict) — anything else is a syntax error or wrong shape.
+	 *
+	 * Validation degrades gracefully by what the host provides:
+	 *   1. the php-yaml extension (in-process), else
+	 *   2. python3 + PyYAML (shelled out), else
+	 *   3. no validator -> warn and accept (never block an install just because
+	 *      the host lacks a YAML parser).
+	 *
+	 * @return bool false only on a definitive parse failure / unreadable file.
+	 */
+	private static function validateUserDataFile($path) {
+		$content = @file_get_contents($path);
+		if ($content === false) {
+			Vps::getLogger()->error("Cloud-init user-data file could not be read: {$path}");
+			return false;
+		}
+		if (strncmp(ltrim($content), '#cloud-config', 13) !== 0) {
+			Vps::getLogger()->info2("user-data {$path} is not a #cloud-config document; skipping YAML validation");
+			return true;
+		}
+		if (function_exists('yaml_parse')) {
+			$parsed = @yaml_parse($content);
+			if (!is_array($parsed)) {
+				Vps::getLogger()->error("Cloud-init user-data {$path} is not valid YAML (or its top level is not a mapping); aborting.");
+				return false;
+			}
+			Vps::getLogger()->info2("user-data {$path} passed YAML validation (php-yaml)");
+			return true;
+		}
+		if (trim(Vps::runCommand('command -v python3 2>/dev/null')) !== '') {
+			$pathArg = escapeshellarg($path);
+			Vps::runCommand("python3 -c 'import sys, yaml; yaml.safe_load(open(sys.argv[1]).read())' {$pathArg} 2>/dev/null", $return);
+			if ($return != 0) {
+				Vps::getLogger()->error("Cloud-init user-data {$path} failed YAML validation (python3 yaml); aborting.");
+				return false;
+			}
+			Vps::getLogger()->info2("user-data {$path} passed YAML validation (python3)");
+			return true;
+		}
+		Vps::getLogger()->warn("No YAML validator available (php-yaml extension or python3); skipping validation of {$path}");
+		return true;
+	}
+
+	/**
 	 * Cloud-init driven KVM install via `virt-install --import`. Replaces the
 	 * defineVps/installTemplate/virt-customize sequence for guests that ship with
 	 * cloud-init pre-installed (Ubuntu/Debian/CentOS/Rocky cloud images, etc.).
@@ -985,6 +1034,13 @@ class Kvm
 		Vps::getLogger()->indent();
 		$cfg = self::resolveCloudInitConfig($configRef);
 		if ($cfg === false) {
+			Vps::getLogger()->unIndent();
+			return false;
+		}
+		// Validate an operator-supplied user-data file up front so a YAML typo
+		// fails the request immediately instead of after we have converted the
+		// image and booted a guest with a broken (or ignored) seed.
+		if (!empty($cfg['user_data']) && !self::validateUserDataFile($cfg['user_data'])) {
 			Vps::getLogger()->unIndent();
 			return false;
 		}
@@ -1062,22 +1118,6 @@ class Kvm
 		}
 
 		// Make sure cloud-init will actually process the seed we attach below.
-		// Ubuntu live/server (subiquity) images disable cloud-init after their
-		// first boot and key that "already done" state to /etc/machine-id — so a
-		// cloned image keeps the same machine-id, cloud-init decides it has
-		// nothing to do, loads its own fallback config and silently ignores the
-		// NoCloud seed (the operator's packages/runcmd/write_files never run).
-		// `cloud-init clean --machine-id` is the documented re-enable; it resets
-		// /etc/machine-id to "uninitialized" so the next boot looks like a brand
-		// new machine and cloud-init runs in full. We replicate that offline:
-		//   - drop the legacy disable marker (older images),
-		//   - clear stale per-instance state under /var/lib/cloud,
-		//   - reset /etc/machine-id (the key step) and the dbus machine-id so they
-		//     are regenerated on first boot,
-		//   - and, if the guest has the cloud-init binary, run the real clean too.
-		// Plain file ops are used so we never depend on systemd/dbus (absent in
-		// the virt-customize appliance); every command is guarded so a missing
-		// path can never abort the pass.
 		// Ubuntu live/server (subiquity) images disable cloud-init after install
 		// with two artifacts that BOTH have to go (confirmed by inspecting such an
 		// image): the marker file /etc/cloud/cloud-init.disabled, which makes
