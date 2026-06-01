@@ -1,4 +1,4 @@
-all: nodev phar
+all: nodev tui-deps phar bundle-tui
 
 dev:
 	composer update --with-all-dependencies -v -o --ansi --dev
@@ -16,6 +16,16 @@ phar:
 	# compression breaks pvdisplay
 	php provirted.php archive --composer=composer.json --app-bootstrap --executable --no-compress provirted.phar
 	chmod +x provirted.phar
+
+tui-deps:
+	# Install the optional PHP 8.1+ TUI dependency set into vendor-tui/.
+	# Kept out of the main composer.json so the core phar stays PHP 7.4
+	# resolvable. Requires a PHP 8.1+ build host (SugarCraft needs ^8.3).
+	COMPOSER=composer-tui.json composer update --with-all-dependencies -o --ansi --no-interaction
+
+bundle-tui:
+	# Graft the installed vendor-tui/ tree into the already-built phar.
+	php -d phar.readonly=0 bin/bundle-tui.php provirted.phar vendor-tui
 
 install:
 	cp provirted_completion /etc/bash_completion.d/provirted

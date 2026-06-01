@@ -1,0 +1,18 @@
+{
+	"name": "provirted/provirted-tui",
+	"description": "Optional PHP 8.1+ TUI dependency bundle for `provirted history tui`. Installed into vendor-tui/ and packed into provirted.phar; loaded only when running under PHP 8.1+. Kept separate from the main (PHP 7.4) composer.json so the core phar build stays 7.4-compatible.",
+	"type": "project",
+	"license": "LGPL-2.1-or-later",
+	"require": {
+		"php": ">=8.2",
+		"sugarcraft/candy-core": "dev-master",
+		"sugarcraft/candy-forms": "dev-master",
+		"sugarcraft/candy-sprinkles": "dev-master"
+	},
+	"config": {
+		"vendor-dir": "vendor-tui",
+		"platform-check": false
+	},
+	"minimum-stability": "dev",
+	"prefer-stable": true
+}

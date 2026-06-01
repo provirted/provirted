@@ -1103,6 +1103,27 @@ class Kvm
 		if (is_numeric($hd) && (int)$hd > 0)
 			Vps::getLogger()->write(Vps::runCommand("qemu-img resize ".escapeshellarg($device)." ".((int)$hd)."M"));
 
+		// Set the root password (and ssh key) directly in the image filesystem,
+		// exactly like the non-cloud-init install path does. cloud-init only
+		// applies user-data on a fresh first boot and many base images ship with
+		// cloud-init already run / disabled / using a non-NoCloud datasource, so
+		// relying on it alone leaves the image's baked-in password in place. The
+		// libvirt domain does not exist yet, so target the disk with -a (the
+		// guest is not running at this point, which virt-customize requires).
+		$hasPassword = ($password !== '' && $password !== null);
+		$hasKey = ($sshKey !== false && $sshKey !== '' && $sshKey !== null);
+		if ($hasPassword || $hasKey) {
+			$cust = 'virt-customize --no-network -a '.escapeshellarg($device);
+			if ($hasPassword)
+				$cust .= ' --root-password password:'.escapeshellarg($password);
+			if ($hasKey)
+				$cust .= ' --ssh-inject root:string:'.escapeshellarg($sshKey);
+			Vps::getLogger()->info('Setting root password in image (virt-customize)');
+			Vps::getLogger()->write(Vps::runCommand($cust, $return));
+			if ($return != 0)
+				Vps::getLogger()->warn("virt-customize could not set the root password (exit {$return}); falling back to cloud-init user-data only");
+		}
+
 		// build (or load) user-data and network-config
 		$cloudDir = '/tmp/provirted-cloud-init-'.$vzid;
 		if (!is_dir($cloudDir) && !@mkdir($cloudDir, 0700, true)) {

@@ -2,7 +2,9 @@
 .claude/worktrees
 .idea
 composer.lock
+composer-tui.lock
 vendor
+vendor-tui
 .php-cs-fixer.cache
 .ai
 
