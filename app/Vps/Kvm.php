@@ -950,6 +950,31 @@ class Kvm
 	}
 
 	/**
+	 * Builds a minimal but VALID cloud-init NoCloud meta-data document.
+	 *
+	 * A NoCloud seed is only honored when it carries BOTH user-data AND meta-data.
+	 * virt-install 5.1.0 (ships on Ubuntu 26.04) regressed and stopped writing the
+	 * empty meta-data file onto the generated cidata ISO when only user-data was
+	 * supplied (virt-manager issue #975, fixed by PR #987). cloud-init then rejects
+	 * the seed entirely — "device /dev/sr0 with label=cidata not a valid seed" —
+	 * and the operator's user-data is silently ignored even though the ISO is
+	 * attached. virt-install 4.0.0 (Ubuntu 22.04) auto-included it, which is why
+	 * the same template installed there but not on 26.04. We always generate and
+	 * pass an explicit meta-data file so the seed is valid on every virt-install
+	 * version. instance-id is the vzid: installCloudInit() wipes /var/lib/cloud on
+	 * the fresh image copy, so cloud-init always treats first boot as a new instance
+	 * and runs the user-data. local-hostname is a sane default that any operator
+	 * user-data 'hostname:' still overrides.
+	 */
+	private static function buildMetaData($vzid, $hostname) {
+		$lines = [];
+		$lines[] = "instance-id: ".self::yamlScalar($vzid);
+		if ($hostname !== '' && $hostname !== null)
+			$lines[] = "local-hostname: ".self::yamlScalar($hostname);
+		return implode("\n", $lines)."\n";
+	}
+
+	/**
 	 * Quote a YAML scalar so embedded $, :, # or whitespace are safe.
 	 */
 	private static function yamlScalar($value) {
@@ -1075,6 +1100,9 @@ class Kvm
 	 *                              via detectOsVariant() and the call aborts
 	 *                              if detection fails.
 	 *   user_data      (optional)  path to user-data YAML; auto-generated if absent
+	 *   meta_data      (optional)  path to meta-data YAML; auto-generated if absent
+	 *                              (always sent to virt-install — a NoCloud seed is
+	 *                              invalid without it on virt-install 5.1.0+)
 	 *   network_config (optional)  path to network-config YAML; auto-generated if absent
 	 *   disk_format    (optional)  default 'qcow2'
 	 *   graphics       (optional)  default 'vnc'  (use 'none' for headless)
@@ -1240,6 +1268,19 @@ class Kvm
 				return false;
 			}
 		}
+		// meta-data is MANDATORY for the NoCloud seed to be valid — without it
+		// virt-install 5.1.0 emits an ISO that cloud-init rejects ("not a valid
+		// seed") and the user-data above is silently ignored. See buildMetaData().
+		if (!empty($cfg['meta_data']) && file_exists($cfg['meta_data'])) {
+			$metaDataFile = $cfg['meta_data'];
+		} else {
+			$metaDataFile = $cloudDir.'/meta-data';
+			if (@file_put_contents($metaDataFile, self::buildMetaData($vzid, $hostname)) === false) {
+				Vps::getLogger()->error("Could not write {$metaDataFile}");
+				Vps::getLogger()->unIndent();
+				return false;
+			}
+		}
 
 		// build virt-install command (ram passed in KB; virt-install wants MB)
 		$ramMb = (int)max(1, floor((int)$ram / 1024));
@@ -1257,7 +1298,7 @@ class Kvm
 			$netSpec .= ',mac='.$mac;
 		$netSpec .= ',model=virtio';
 		$parts[] = '--network '.escapeshellarg($netSpec);
-		$parts[] = '--cloud-init user-data='.escapeshellarg($userDataFile).',network-config='.escapeshellarg($networkFile);
+		$parts[] = '--cloud-init meta-data='.escapeshellarg($metaDataFile).',user-data='.escapeshellarg($userDataFile).',network-config='.escapeshellarg($networkFile);
 		if ($graphics === 'none')
 			$parts[] = '--graphics none';
 		else
@@ -1271,6 +1312,7 @@ class Kvm
 		Vps::getLogger()->write(Vps::runCommand($cmd, $return));
 		// scrub temp dir (leave operator-provided paths alone)
 		if (strpos($userDataFile, $cloudDir) === 0) @unlink($userDataFile);
+		if (strpos($metaDataFile, $cloudDir) === 0) @unlink($metaDataFile);
 		if (strpos($networkFile, $cloudDir) === 0) @unlink($networkFile);
 		@rmdir($cloudDir);
 		if ($return != 0) {
