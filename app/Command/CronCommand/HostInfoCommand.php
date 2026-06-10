@@ -67,6 +67,8 @@ class HostInfoCommand extends Command {
 		$server['cpu_model'] = $matches[1];
 		preg_match('/MemTotal\s*\:\s*(\d+)/i', file_get_contents('/proc/meminfo'), $matches);
 		$server['ram'] = (int)$matches[1];
+        preg_match('/MemAvailable\s*\:\s*(\d+)/i', file_get_contents('/proc/meminfo'), $matches);
+        $server['ramfree'] = (int)$matches[1];
 		$badDir = '/vz/root/';
 		$badDevs = array('proc', 'sysfs', 'devtmpfs', 'devpts', 'tmpfs', 'beancounter', 'fairsched', 'mqueue', 'cgroup', 'none');
 		$badLen = strlen($badDir);
