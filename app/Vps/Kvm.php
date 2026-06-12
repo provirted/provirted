@@ -798,11 +798,19 @@ class Kvm
 		}
 		if (!preg_match('#^(https?|ftp)://#i', $imageRef) && $imageRef[0] !== '/')
 			$imageRef = '/vz/templates/'.$imageRef;
-		if ($yamlRef !== '' && $yamlRef[0] !== '/')
+		$yamlManaged = false;
+		if ($yamlRef !== '' && $yamlRef[0] !== '/') {
 			$yamlRef = '/vz/templates/cloudinit/'.$yamlRef;
+			$yamlManaged = true;
+		}
 		if ($yamlRef !== '' && !file_exists($yamlRef)) {
-			Vps::getLogger()->error("Cloud-init user-data file not found: {$yamlRef}");
-			return false;
+			// A bare-name (managed) user-data file that isn't cached yet: pull it from
+			// the control panel (action=get_template) and cache it under
+			// /vz/templates/cloudinit/ before giving up.
+			if (!$yamlManaged || Vps::getTemplate('cloud-init:'.$ref) === false || !file_exists($yamlRef)) {
+				Vps::getLogger()->error("Cloud-init user-data file not found: {$yamlRef}");
+				return false;
+			}
 		}
 		if ($osVariant === '') {
 			$osVariant = self::detectOsVariant($imageRef);

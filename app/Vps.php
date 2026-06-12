@@ -239,6 +239,62 @@ class Vps
 	}
 
 	/**
+	* Fetches a cloud-init template from the control panel and caches it locally.
+	*
+	* Used when a cloud-init install references a user-data file that does not yet
+	* exist under /vz/templates/cloudinit/ (e.g. the "openclaw.yaml" in a template
+	* like "cloud-init:ubuntu24.qcow2:openclaw.yaml"). The full cloud-init: reference
+	* is passed verbatim as the "template" GET var to action=get_template, which
+	* returns the matching vps_templates row as JSON; the user-data lives in the
+	* "template_config" field. The contents are written to
+	* /vz/templates/cloudinit/<yaml-basename> and that path is returned.
+	*
+	* @param string $template the full cloud-init: reference (e.g. cloud-init:ubuntu24.qcow2:openclaw.yaml)
+	* @return string|false the local path to the cached template on success, false on failure
+	*/
+	public static function getTemplate($template) {
+		$url = self::getUrl().'?action=get_template&template='.urlencode($template);
+		$response = trim(self::runCommand('curl -sS --max-time 30 '.escapeshellarg($url).' 2>&1', $return));
+		if ($return != 0) {
+			self::getLogger()->error("Failed to fetch template '{$template}' from {$url} (curl exit {$return}); response: {$response}");
+			return false;
+		}
+		$data = json_decode($response, true);
+		if (!is_array($data)) {
+			self::getLogger()->error("Invalid response getting template '{$template}': {$response}");
+			return false;
+		}
+		if (isset($data['error'])) {
+			self::getLogger()->error("Server error fetching template '{$template}': {$data['error']}");
+			return false;
+		}
+		if (!isset($data['template_config']) || trim((string) $data['template_config']) === '') {
+			self::getLogger()->error("Template '{$template}' response has no template_config content: {$response}");
+			return false;
+		}
+		// The on-disk filename is the last colon-delimited segment of the reference
+		// (e.g. "openclaw.yaml" from "cloud-init:ubuntu24.qcow2:openclaw.yaml").
+		$ref = $template;
+		if (strpos($ref, 'cloud-init:') === 0)
+			$ref = substr($ref, strlen('cloud-init:'));
+		$parts = explode(':', $ref);
+		$yamlName = basename(trim((string) end($parts)));
+		if ($yamlName === '') {
+			self::getLogger()->error("Could not determine target filename for template '{$template}'");
+			return false;
+		}
+		$dir = '/vz/templates/cloudinit';
+		@mkdir($dir, 0755, true);
+		$dest = $dir.'/'.$yamlName;
+		if (@file_put_contents($dest, $data['template_config']) === false) {
+			self::getLogger()->error("Could not write cloud-init template to {$dest} (check permissions)");
+			return false;
+		}
+		self::getLogger()->info("Downloaded cloud-init template '{$template}' to {$dest}");
+		return $dest;
+	}
+
+	/**
 	* return a list of the running vps
 	*
 	* @return array
