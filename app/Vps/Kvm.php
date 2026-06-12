@@ -803,14 +803,24 @@ class Kvm
 			$yamlRef = '/vz/templates/cloudinit/'.$yamlRef;
 			$yamlManaged = true;
 		}
-		if ($yamlRef !== '' && !file_exists($yamlRef)) {
-			// A bare-name (managed) user-data file that isn't cached yet: pull it from
-			// the control panel (action=get_template) and cache it under
-			// /vz/templates/cloudinit/ before giving up.
-			if (!$yamlManaged || Vps::getTemplate('cloud-init:'.$ref) === false || !file_exists($yamlRef)) {
-				Vps::getLogger()->error("Cloud-init user-data file not found: {$yamlRef}");
+		if ($yamlRef !== '' && $yamlManaged) {
+			// Always pull the latest copy from the control panel (action=get_template)
+			// so the cached user-data stays current. Only if the download fails do we
+			// fall back to whatever is already cached on disk.
+			$downloaded = Vps::getTemplate('cloud-init:'.$ref);
+			if ($downloaded !== false) {
+				$yamlRef = $downloaded;
+			} elseif (file_exists($yamlRef)) {
+				Vps::getLogger()->warn("Could not refresh cloud-init template 'cloud-init:{$ref}'; falling back to existing {$yamlRef}");
+			} else {
+				Vps::getLogger()->error("Cloud-init user-data file not found and could not be downloaded: {$yamlRef}");
 				return false;
 			}
+		} elseif ($yamlRef !== '' && !file_exists($yamlRef)) {
+			// Absolute custom path the operator supplied — not managed, so it cannot
+			// be auto-downloaded; it must already exist on disk.
+			Vps::getLogger()->error("Cloud-init user-data file not found: {$yamlRef}");
+			return false;
 		}
 		if ($osVariant === '') {
 			$osVariant = self::detectOsVariant($imageRef);
