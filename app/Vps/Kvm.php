@@ -883,6 +883,86 @@ class Kvm
 	}
 
 	/**
+	 * Set of os-variant short-ids the locally-installed virt-install / libosinfo
+	 * understands, as [lowercase-id => true]. Cached for the process. An empty
+	 * result means "could not determine" — callers then skip the support gate.
+	 */
+	public static function supportedOsVariants() {
+		static $list = null;
+		if ($list !== null)
+			return $list;
+		$list = [];
+		foreach (['virt-install --osinfo list', 'osinfo-query --fields=short-id os', 'virt-install --os-variant list'] as $cmd) {
+			$out = Vps::runCommand($cmd.' 2>/dev/null');
+			if (trim($out) === '')
+				continue;
+			foreach (preg_split('/\s+/', strtolower($out)) as $tok) {
+				$tok = trim($tok);
+				if ($tok !== '')
+					$list[$tok] = true;
+			}
+			if (!empty($list))
+				break;
+		}
+		return $list;
+	}
+
+	/** True if virt-install on this host accepts the given --os-variant. */
+	public static function isOsVariantSupported($variant) {
+		$list = self::supportedOsVariants();
+		if (empty($list))
+			return true; // could not determine the list; do not block the install
+		return isset($list[strtolower((string)$variant)]);
+	}
+
+	/**
+	 * When the auto-detected os-variant is too new for the local libosinfo
+	 * (e.g. 'ubuntu26.04' on a host whose virt-install predates Ubuntu 26.04),
+	 * pick the newest still-supported variant of the same family and, when a
+	 * matching compact-tag base image exists alongside the original, swap to it
+	 * too. Returns ['os_variant'=>..., 'image'=>...] or false when none fits.
+	 */
+	public static function fallbackOsVariant($osVariant, $image) {
+		$ov = strtolower((string)$osVariant);
+		$candidates = [];
+		if (preg_match('/^ubuntu\d{2}\.\d{2}$/', $ov))
+			$candidates = ['ubuntu24.04', 'ubuntu22.04', 'ubuntu20.04', 'ubuntu18.04'];
+		elseif (preg_match('/^debian\d+$/', $ov))
+			$candidates = ['debian12', 'debian11', 'debian10'];
+		elseif (preg_match('/^almalinux\d+$/', $ov))
+			$candidates = ['almalinux9', 'almalinux8'];
+		foreach ($candidates as $cand) {
+			if ($cand === $ov || !self::isOsVariantSupported($cand))
+				continue;
+			$newImage = self::matchingBaseImage($image, $cand);
+			return ['os_variant' => $cand, 'image' => $newImage !== false ? $newImage : $image];
+		}
+		return false;
+	}
+
+	/**
+	 * Given an original base image path and a fallback os-variant, return the
+	 * matching compact-tag base image in the same directory if it exists
+	 * (e.g. /vz/templates/ubuntu26.qcow2 + 'ubuntu24.04'
+	 *       -> /vz/templates/ubuntu24.qcow2), else false.
+	 */
+	public static function matchingBaseImage($image, $variant) {
+		$dir = dirname($image);
+		$ext = pathinfo($image, PATHINFO_EXTENSION);
+		if ($ext === '')
+			$ext = 'qcow2';
+		$tag = false;
+		if (preg_match('/^ubuntu(\d{2})\.\d{2}$/', $variant, $m))
+			$tag = 'ubuntu'.$m[1];
+		elseif (preg_match('/^(debian|almalinux)(\d+)$/', $variant, $m))
+			$tag = $m[1].$m[2];
+		if ($tag === false)
+			return false;
+		$cand = $dir.'/'.$tag.'.'.$ext;
+		return file_exists($cand) ? $cand : false;
+	}
+
+	/**
 	 * Hash a plaintext password with SHA-512 ($6$), the crypt scheme every
 	 * modern cloud image understands. The salt is drawn from random_bytes()
 	 * and trimmed to the 16-char crypt salt window.
@@ -1153,6 +1233,22 @@ class Kvm
 		$diskFormat = isset($cfg['disk_format']) && $cfg['disk_format'] !== '' ? $cfg['disk_format'] : 'qcow2';
 		$graphics = isset($cfg['graphics']) && $cfg['graphics'] !== '' ? $cfg['graphics'] : 'vnc';
 		$bridge = isset($cfg['bridge']) && $cfg['bridge'] !== '' ? $cfg['bridge'] : 'br0';
+
+		// If the auto-detected os-variant is too new for the local libosinfo
+		// (e.g. 'ubuntu26.04' on an older virt-install), fall back to the newest
+		// supported variant of the same family — and to the matching base image
+		// (ubuntu26.qcow2 -> ubuntu24.qcow2) when one is present. Otherwise
+		// virt-install aborts with "Unknown OS name '...'" before the VM boots.
+		if (!self::isOsVariantSupported($osVariant)) {
+			$fb = self::fallbackOsVariant($osVariant, $image);
+			if ($fb !== false) {
+				Vps::getLogger()->warn("os-variant '{$osVariant}' is unknown to the local virt-install/libosinfo; falling back to '{$fb['os_variant']}'".($fb['image'] !== $image ? " and image '".basename($image)."' -> '".basename($fb['image'])."'" : ''));
+				$osVariant = $fb['os_variant'];
+				$image = $fb['image'];
+			} else {
+				Vps::getLogger()->warn("os-variant '{$osVariant}' is unknown to the local virt-install/libosinfo and no supported fallback was found; the install may fail");
+			}
+		}
 
 		// fetch image to a local cache path if it's a URL
 		$cleanupImage = false;
