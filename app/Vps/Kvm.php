@@ -896,7 +896,11 @@ class Kvm
 			$out = Vps::runCommand($cmd.' 2>/dev/null');
 			if (trim($out) === '')
 				continue;
-			foreach (preg_split('/\s+/', strtolower($out)) as $tok) {
+			// `virt-install --osinfo list` prints comma-separated aliases per line
+			// (e.g. "ubuntu-lts-latest, ubuntu24.04, ubuntunoble"), so split on
+			// commas AND whitespace — otherwise tokens keep a trailing comma and
+			// never match a requested short-id like 'ubuntu24.04'.
+			foreach (preg_split('/[\s,]+/', strtolower($out)) as $tok) {
 				$tok = trim($tok);
 				if ($tok !== '')
 					$list[$tok] = true;
