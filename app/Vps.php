@@ -725,9 +725,9 @@ class Vps
 	 * Cloud-init driven KVM install — currently KVM-only. Other backends would need
 	 * their own cloud-init-ish flow if/when added; for now fall through to false.
 	 */
-	public static function installCloudInit($vzid, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
+	public static function installCloudInit($vzid, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit, $clientEmail = '') {
 		if (self::getVirtType() == 'kvm')
-			return Kvm::installCloudInit($vzid, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit);
+			return Kvm::installCloudInit($vzid, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit, $clientEmail);
 		self::getLogger()->error('cloud-init templates are only supported for the kvm backend');
 		return false;
 	}

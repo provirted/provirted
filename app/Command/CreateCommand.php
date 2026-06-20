@@ -123,6 +123,7 @@ HELP;
         $opts->add('iops-limit:', 'The IO Limit in iops')->isa('number');
         $opts->add('ipv6-ip:', 'The IPv6 IP Address if one is to be set')->isa('string');
         $opts->add('ipv6-range:', 'The IPv6 IP Range if one is to be set')->isa('string');
+        $opts->add('client-email:', 'Optional client/admin email exposed to cloud-init (admin account email)')->isa('string');
     }
 
     /** @param \CLIFramework\ArgInfoList $args */
@@ -185,6 +186,7 @@ HELP;
         $ipv6Range = array_key_exists('ipv6-range', $opts->keys) ? $opts->keys['ipv6-range']->value : false;
         $ioLimit = $useAll === false && array_key_exists('io-limit', $opts->keys) ? $opts->keys['io-limit']->value : false;
         $iopsLimit = $useAll === false && array_key_exists('iops-limit', $opts->keys) ? $opts->keys['iops-limit']->value : false;
+        $clientEmail = array_key_exists('client-email', $opts->keys) ? $opts->keys['client-email']->value : '';
         if (!empty($ip) && !$this->validIp($ip,true)) {
             Vps::getLogger()->error("Invalid IP Address '{$ip}'.");
             return 1;
@@ -240,7 +242,7 @@ HELP;
         if ($cloudInit) {
             // virt-install --import handles libvirt definition AND OS install in one step,
             // so we skip Vps::defineVps / installTemplate / virt-customize entirely.
-            if (!Vps::installCloudInit($vzid, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit))
+            if (!Vps::installCloudInit($vzid, $template, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit, $clientEmail))
                 $error++;
             else
                 $this->progress(70, $url, $orderId);

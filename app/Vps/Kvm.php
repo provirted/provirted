@@ -1217,7 +1217,7 @@ class Kvm
 	 * Storage is reused from Vps::setupStorage() (same /vz/<vzid>/os.qcow2 or /dev/vz/<vzid> path
 	 * as the XML install path) so snapshot/backup/resize tooling keeps working.
 	 */
-	public static function installCloudInit($vzid, $configRef, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit) {
+	public static function installCloudInit($vzid, $configRef, $ip, $extraIps, $mac, $device, $pool, $ram, $cpu, $hd, $hostname, $password, $sshKey, $ipv6Ip, $ipv6Range, $ioLimit, $iopsLimit, $clientEmail = '') {
 		Vps::getLogger()->info('Installing via cloud-init (virt-install --import)');
 		Vps::getLogger()->indent();
 		$cfg = self::resolveCloudInitConfig($configRef);
@@ -1344,10 +1344,23 @@ class Kvm
 			'/etc/cloud/cloud.cfg.d/20-disable-cc-dpkg-grub.cfg',
 			'/etc/cloud/ds-identify.cfg',
 		]);
+		// Expose the provisioner-supplied admin email + the VPS root password (plus
+		// ip/hostname) to the cloud-init templates via /etc/vps-provision.env, which
+		// each bootstrap sources to use as the admin account email/password instead
+		// of generating its own. Values are shell-quoted so `. /etc/vps-provision.env`
+		// parses them safely regardless of special characters.
+		$shq = function ($v) { return "'".str_replace("'", "'\\''", (string)$v)."'"; };
+		$provEnv = "# Provisioner-supplied admin credentials for cloud-init apps\n"
+			."VPS_ADMIN_EMAIL=".$shq($clientEmail)."\n"
+			."VPS_ADMIN_PASS=".$shq($password)."\n"
+			."VPS_IP=".$shq($ip)."\n"
+			."VPS_HOSTNAME=".$shq($hostname)."\n";
 		$reset = 'virt-customize --no-network -a '.escapeshellarg($device)
 			." --run-command ".escapeshellarg('rm -f '.$installerArtifacts.' 2>/dev/null || true')
 			." --run-command ".escapeshellarg('rm -rf /var/lib/cloud/instance /var/lib/cloud/instances /var/lib/cloud/sem /var/lib/cloud/data 2>/dev/null || true')
-			." --run-command ".escapeshellarg(': > /etc/machine-id 2>/dev/null || true');
+			." --run-command ".escapeshellarg(': > /etc/machine-id 2>/dev/null || true')
+			." --write ".escapeshellarg('/etc/vps-provision.env:'.$provEnv)
+			." --run-command ".escapeshellarg('chmod 600 /etc/vps-provision.env 2>/dev/null || true');
 		Vps::getLogger()->info('Re-enabling cloud-init (reset machine-id + clear state) so the seed runs on first boot');
 		Vps::getLogger()->write(Vps::runCommand($reset, $return));
 		if ($return != 0)
