@@ -920,6 +920,129 @@ class Kvm
 	}
 
 	/**
+	 * True when the local virt-install accepts the `--cloud-init network-config=`
+	 * sub-option (added in virt-install 4.0.0). Older virt-install (e.g. 2.2.1 on
+	 * Ubuntu 20.04) rejects the whole `--cloud-init meta-data=,user-data=,network-config=`
+	 * argument ("unrecognized arguments"), which fails every cloud-init create. We
+	 * probe the live binary rather than parse a version string so a backported or
+	 * locally-built virt-install is judged on what it can actually do.
+	 */
+	public static function virtInstallSupportsCloudInitNetworkConfig() {
+		$out = Vps::runCommand('virt-install --cloud-init=help 2>&1', $rc);
+		return (stripos((string)$out, 'network-config') !== false);
+	}
+
+	/**
+	 * Make sure the host's virt-install can drive our `--cloud-init` seed before a
+	 * cloud-init:* template install. On Ubuntu 20.04 the stock virtinst is 2.2.1,
+	 * whose `--cloud-init` predates the meta-data/user-data/network-config sub-options,
+	 * so every cloud-init create dies with "unrecognized arguments: --cloud-init ...".
+	 * When the capability is missing we upgrade virtinst in place from a newer Ubuntu
+	 * release's (jammy) `virtinst_*_all.deb` — it is arch-independent pure Python and
+	 * its only extra deps (xorriso + libosinfo gir) are satisfiable from the host's
+	 * own repos. This is idempotent: once virt-install reports network-config support
+	 * the probe short-circuits and nothing is downloaded or installed (so 22.04+,
+	 * already on virtinst 4.x, is a no-op, as is any host we have already upgraded).
+	 *
+	 * Returns true if virt-install ends up supporting the sub-option; false if the
+	 * upgrade was attempted but did not take (caller may still try the create).
+	 */
+	public static function ensureCloudInitVirtInstall() {
+		if (self::virtInstallSupportsCloudInitNetworkConfig())
+			return true; // 22.04+/already-upgraded: nothing to do
+		// Identify the distro so we pick a compatible upgrade package.
+		$rel = strtolower(trim(Vps::runCommand('. /etc/os-release 2>/dev/null; echo "$ID|$VERSION_ID|$VERSION_CODENAME"', $rc)));
+		$parts = explode('|', $rel);
+		$id = isset($parts[0]) ? $parts[0] : '';
+		$ver = isset($parts[1]) ? $parts[1] : '';
+		if ($id !== 'ubuntu') {
+			Vps::getLogger()->warn("virt-install lacks --cloud-init network-config support and this is not Ubuntu ({$rel}); skipping auto-upgrade — the cloud-init create will likely fail");
+			return false;
+		}
+		// jammy's virtinst 4.1.0 supports network-config and installs cleanly on
+		// focal (20.04) and jammy (22.04); deps (xorriso, gir1.2-libosinfo-1.0,
+		// python3-libvirt>=0.4.6, python3-gi, python3-libxml2, python3-requests)
+		// all resolve from the host's existing repos.
+		$debUrl = 'http://archive.ubuntu.com/ubuntu/pool/universe/v/virt-manager/virtinst_4.1.0-3_all.deb';
+		$deb = '/tmp/virtinst_4.1.0-3_all.deb';
+		Vps::getLogger()->warn("virt-install is too old for cloud-init (--cloud-init network-config unsupported) on Ubuntu {$ver}; upgrading virtinst from {$debUrl}");
+		Vps::runCommand('rm -f '.escapeshellarg($deb).' 2>/dev/null; wget -q -O '.escapeshellarg($deb).' '.escapeshellarg($debUrl).' 2>&1', $rc);
+		if ($rc != 0 || !file_exists($deb)) {
+			Vps::getLogger()->error("Could not download virtinst upgrade package (wget exit {$rc}); leaving virt-install as-is");
+			@unlink($deb);
+			return false;
+		}
+		// Install the .deb and let apt pull its dependencies. Retry once behind an
+		// `apt-get update` in case the dep index is stale.
+		Vps::runCommand('DEBIAN_FRONTEND=noninteractive apt-get install -y '.escapeshellarg($deb).' 2>&1', $rc);
+		if ($rc != 0) {
+			Vps::getLogger()->warn("virtinst install returned {$rc}; refreshing apt and retrying");
+			Vps::runCommand('apt-get update -qq 2>&1', $r2);
+			Vps::runCommand('DEBIAN_FRONTEND=noninteractive apt-get install -y '.escapeshellarg($deb).' 2>&1', $rc);
+		}
+		@unlink($deb);
+		$ok = self::virtInstallSupportsCloudInitNetworkConfig();
+		if ($ok)
+			Vps::getLogger()->info('virtinst upgraded; virt-install now supports --cloud-init network-config');
+		else
+			Vps::getLogger()->error('virtinst upgrade did not enable --cloud-init network-config; the cloud-init create may fail');
+		return $ok;
+	}
+
+	/**
+	 * True when libosinfo on this host knows a recent guest OS definition. We probe
+	 * for ubuntu24.04 specifically because it is our default cloud-init base; if it
+	 * is present the osinfo-db is recent enough for everything we ship.
+	 */
+	public static function osinfoDbKnowsModernOs() {
+		$out = Vps::runCommand('virt-install --osinfo list 2>/dev/null; osinfo-query os 2>/dev/null', $rc);
+		return (stripos((string)$out, 'ubuntu24.04') !== false);
+	}
+
+	/**
+	 * Make sure the host's osinfo-db is recent enough to describe modern guest OSes
+	 * before a cloud-init:* install. Ubuntu 20.04 ships osinfo-db 0.20200325, which
+	 * predates ubuntu24.04 (our default base image's os-variant); virt-install then
+	 * aborts with "Unknown OS name 'ubuntu24.04'". osinfo-db is arch-independent
+	 * pure data, so we drop in a newer release's package in place. Idempotent: once
+	 * libosinfo knows ubuntu24.04 the probe short-circuits and nothing is installed
+	 * (so Ubuntu 22.04+/already-upgraded hosts are a no-op). Call AFTER
+	 * ensureCloudInitVirtInstall() so the `virt-install --osinfo list` probe works.
+	 */
+	public static function ensureOsinfoDb() {
+		if (self::osinfoDbKnowsModernOs())
+			return true; // already recent enough
+		$rel = strtolower(trim(Vps::runCommand('. /etc/os-release 2>/dev/null; echo "$ID|$VERSION_ID"', $rc)));
+		$id = explode('|', $rel)[0];
+		if ($id !== 'ubuntu') {
+			Vps::getLogger()->warn("osinfo-db does not know ubuntu24.04 and this is not Ubuntu ({$rel}); skipping auto-upgrade — virt-install may reject the os-variant");
+			return false;
+		}
+		$debUrl = 'http://archive.ubuntu.com/ubuntu/pool/universe/o/osinfo-db/osinfo-db_0.20250124-0ubuntu0.22.04.1_all.deb';
+		$deb = '/tmp/osinfo-db_0.20250124-0ubuntu0.22.04.1_all.deb';
+		Vps::getLogger()->warn("osinfo-db is too old (does not know ubuntu24.04); upgrading osinfo-db from {$debUrl}");
+		Vps::runCommand('rm -f '.escapeshellarg($deb).' 2>/dev/null; wget -q -O '.escapeshellarg($deb).' '.escapeshellarg($debUrl).' 2>&1', $rc);
+		if ($rc != 0 || !file_exists($deb)) {
+			Vps::getLogger()->error("Could not download osinfo-db upgrade package (wget exit {$rc}); leaving osinfo-db as-is");
+			@unlink($deb);
+			return false;
+		}
+		Vps::runCommand('DEBIAN_FRONTEND=noninteractive apt-get install -y '.escapeshellarg($deb).' 2>&1', $rc);
+		if ($rc != 0) {
+			Vps::getLogger()->warn("osinfo-db install returned {$rc}; refreshing apt and retrying");
+			Vps::runCommand('apt-get update -qq 2>&1', $r2);
+			Vps::runCommand('DEBIAN_FRONTEND=noninteractive apt-get install -y '.escapeshellarg($deb).' 2>&1', $rc);
+		}
+		@unlink($deb);
+		$ok = self::osinfoDbKnowsModernOs();
+		if ($ok)
+			Vps::getLogger()->info('osinfo-db upgraded; libosinfo now knows ubuntu24.04');
+		else
+			Vps::getLogger()->error('osinfo-db upgrade did not register ubuntu24.04; virt-install may reject the os-variant');
+		return $ok;
+	}
+
+	/**
 	 * When the auto-detected os-variant is too new for the local libosinfo
 	 * (e.g. 'ubuntu26.04' on a host whose virt-install predates Ubuntu 26.04),
 	 * pick the newest still-supported variant of the same family and, when a
@@ -1237,6 +1360,15 @@ class Kvm
 		$diskFormat = isset($cfg['disk_format']) && $cfg['disk_format'] !== '' ? $cfg['disk_format'] : 'qcow2';
 		$graphics = isset($cfg['graphics']) && $cfg['graphics'] !== '' ? $cfg['graphics'] : 'vnc';
 		$bridge = isset($cfg['bridge']) && $cfg['bridge'] !== '' ? $cfg['bridge'] : 'br0';
+
+		// Bring the host's cloud-init tooling up to spec BEFORE we validate/pick the
+		// os-variant below — on Ubuntu 20.04 the stock virtinst (2.2.1) cannot parse
+		// the --cloud-init meta-data/user-data/network-config sub-options, and the
+		// stock osinfo-db is too old to know modern guest OSes (so virt-install would
+		// abort with "Unknown OS name 'ubuntu24.04'"). Both upgrades are idempotent
+		// (no-op once the host already supports them, e.g. Ubuntu 22.04+).
+		self::ensureCloudInitVirtInstall();
+		self::ensureOsinfoDb();
 
 		// If the auto-detected os-variant is too new for the local libosinfo
 		// (e.g. 'ubuntu26.04' on an older virt-install), fall back to the newest
