@@ -948,8 +948,18 @@ class Kvm
 	 * upgrade was attempted but did not take (caller may still try the create).
 	 */
 	public static function ensureCloudInitVirtInstall() {
-		if (self::virtInstallSupportsCloudInitNetworkConfig())
-			return true; // 22.04+/already-upgraded: nothing to do
+		// Bring EVERY host up to at least virtinst 4.1.0 (not just hosts that are
+		// outright broken) so the whole fleet shares one modern toolchain — newest
+		// os-variants plus the --cloud-init meta-data/user-data/network-config
+		// sub-options. No-op once virt-install is >= 4.1.0 AND supports network-config.
+		$installed = trim(Vps::runCommand("dpkg-query -W -f='\${Version}' virtinst 2>/dev/null", $dq));
+		$atLeastTarget = false;
+		if ($installed !== '') {
+			Vps::runCommand('dpkg --compare-versions '.escapeshellarg($installed).' ge 1:4.1.0', $cmp);
+			$atLeastTarget = ($cmp === 0);
+		}
+		if ($atLeastTarget && self::virtInstallSupportsCloudInitNetworkConfig())
+			return true; // already current fleet-wide
 		// Identify the distro so we pick a compatible upgrade package.
 		$rel = strtolower(trim(Vps::runCommand('. /etc/os-release 2>/dev/null; echo "$ID|$VERSION_ID|$VERSION_CODENAME"', $rc)));
 		$parts = explode('|', $rel);
@@ -990,37 +1000,41 @@ class Kvm
 	}
 
 	/**
-	 * True when libosinfo on this host knows a recent guest OS definition. We probe
-	 * for ubuntu24.04 specifically because it is our default cloud-init base; if it
-	 * is present the osinfo-db is recent enough for everything we ship.
+	 * True when libosinfo on this host knows the newest guest OS we expect a current
+	 * host to handle. We probe for ubuntu25.10 — the newest Ubuntu in the osinfo-db
+	 * we ship (0.20250606); if it is present the DB is recent enough for everything.
+	 * NOTE: ubuntu26.04's definition is not yet in any apt osinfo-db; bump this probe
+	 * (and the deb in ensureOsinfoDb) to ubuntu26.04 / a 26.04-aware osinfo-db once
+	 * it ships and the whole fleet will pick it up on the next cloud-init create.
 	 */
 	public static function osinfoDbKnowsModernOs() {
 		$out = Vps::runCommand('virt-install --osinfo list 2>/dev/null; osinfo-query os 2>/dev/null', $rc);
-		return (stripos((string)$out, 'ubuntu24.04') !== false);
+		return (stripos((string)$out, 'ubuntu25.10') !== false);
 	}
 
 	/**
 	 * Make sure the host's osinfo-db is recent enough to describe modern guest OSes
-	 * before a cloud-init:* install. Ubuntu 20.04 ships osinfo-db 0.20200325, which
-	 * predates ubuntu24.04 (our default base image's os-variant); virt-install then
-	 * aborts with "Unknown OS name 'ubuntu24.04'". osinfo-db is arch-independent
-	 * pure data, so we drop in a newer release's package in place. Idempotent: once
-	 * libosinfo knows ubuntu24.04 the probe short-circuits and nothing is installed
-	 * (so Ubuntu 22.04+/already-upgraded hosts are a no-op). Call AFTER
-	 * ensureCloudInitVirtInstall() so the `virt-install --osinfo list` probe works.
+	 * before a cloud-init:* install — fleet-wide, so even hosts that already work for
+	 * older guests get the newest OS definitions. Older osinfo-db (e.g. Ubuntu 20.04's
+	 * 0.20200325 or 22.04's 0.20250124) predates recent os-variants, so virt-install
+	 * aborts with "Unknown OS name '...'". osinfo-db is arch-independent pure data, so
+	 * we drop in a newer release's package in place. Idempotent: once libosinfo knows
+	 * the probe OS (ubuntu25.10) nothing is downloaded or installed (24.04 hosts that
+	 * already ship 0.20250606 are a no-op). Call AFTER ensureCloudInitVirtInstall()
+	 * so the `virt-install --osinfo list` probe works.
 	 */
 	public static function ensureOsinfoDb() {
 		if (self::osinfoDbKnowsModernOs())
-			return true; // already recent enough
+			return true; // already recent enough fleet-wide
 		$rel = strtolower(trim(Vps::runCommand('. /etc/os-release 2>/dev/null; echo "$ID|$VERSION_ID"', $rc)));
 		$id = explode('|', $rel)[0];
 		if ($id !== 'ubuntu') {
-			Vps::getLogger()->warn("osinfo-db does not know ubuntu24.04 and this is not Ubuntu ({$rel}); skipping auto-upgrade — virt-install may reject the os-variant");
+			Vps::getLogger()->warn("osinfo-db does not know ubuntu25.10 and this is not Ubuntu ({$rel}); skipping auto-upgrade — virt-install may reject the os-variant");
 			return false;
 		}
-		$debUrl = 'http://archive.ubuntu.com/ubuntu/pool/universe/o/osinfo-db/osinfo-db_0.20250124-0ubuntu0.22.04.1_all.deb';
-		$deb = '/tmp/osinfo-db_0.20250124-0ubuntu0.22.04.1_all.deb';
-		Vps::getLogger()->warn("osinfo-db is too old (does not know ubuntu24.04); upgrading osinfo-db from {$debUrl}");
+		$debUrl = 'http://archive.ubuntu.com/ubuntu/pool/universe/o/osinfo-db/osinfo-db_0.20250606-0ubuntu0.24.04.1_all.deb';
+		$deb = '/tmp/osinfo-db_0.20250606-0ubuntu0.24.04.1_all.deb';
+		Vps::getLogger()->warn("osinfo-db is too old (does not know ubuntu25.10); upgrading osinfo-db from {$debUrl}");
 		Vps::runCommand('rm -f '.escapeshellarg($deb).' 2>/dev/null; wget -q -O '.escapeshellarg($deb).' '.escapeshellarg($debUrl).' 2>&1', $rc);
 		if ($rc != 0 || !file_exists($deb)) {
 			Vps::getLogger()->error("Could not download osinfo-db upgrade package (wget exit {$rc}); leaving osinfo-db as-is");
@@ -1036,9 +1050,9 @@ class Kvm
 		@unlink($deb);
 		$ok = self::osinfoDbKnowsModernOs();
 		if ($ok)
-			Vps::getLogger()->info('osinfo-db upgraded; libosinfo now knows ubuntu24.04');
+			Vps::getLogger()->info('osinfo-db upgraded; libosinfo now knows ubuntu25.10');
 		else
-			Vps::getLogger()->error('osinfo-db upgrade did not register ubuntu24.04; virt-install may reject the os-variant');
+			Vps::getLogger()->error('osinfo-db upgrade did not register ubuntu25.10; virt-install may reject the os-variant');
 		return $ok;
 	}
 
@@ -1053,7 +1067,7 @@ class Kvm
 		$ov = strtolower((string)$osVariant);
 		$candidates = [];
 		if (preg_match('/^ubuntu\d{2}\.\d{2}$/', $ov))
-			$candidates = ['ubuntu24.04', 'ubuntu22.04', 'ubuntu20.04', 'ubuntu18.04'];
+			$candidates = ['ubuntu26.04', 'ubuntu25.10', 'ubuntu25.04', 'ubuntu24.04', 'ubuntu22.04', 'ubuntu20.04', 'ubuntu18.04'];
 		elseif (preg_match('/^debian\d+$/', $ov))
 			$candidates = ['debian12', 'debian11', 'debian10'];
 		elseif (preg_match('/^almalinux\d+$/', $ov))
