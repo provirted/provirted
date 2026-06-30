@@ -3,6 +3,7 @@ namespace App\Command\CronCommand;
 
 use App\Vps;
 use App\Os\Xinetd;
+use App\Os\Saturation;
 use CLIFramework\Command;
 use CLIFramework\Formatter;
 use CLIFramework\Logger\ActionLogger;
@@ -69,6 +70,24 @@ class HostInfoCommand extends Command {
 		$server['ram'] = (int)$matches[1];
         preg_match('/MemAvailable\s*\:\s*(\d+)/i', file_get_contents('/proc/meminfo'), $matches);
         $server['ramfree'] = (int)$matches[1];
+        // MemAvailable (kB) again under the name the scheduler expects.
+        $server['mem_free'] = (int)$matches[1];
+        // Node saturation model (see App\Os\Saturation): samples /proc/stat and
+        // /proc/diskstats over a 1s window to derive CPU/IO/memory pressure plus
+        // steal time and current-vs-max CPU capacity, then merges the values the
+        // VPS placement scheduler consumes into the host-info payload.
+        $sat = Saturation::getMetrics();
+        $server['cpu_usage'] = $sat['cpu_usage'];               // active CPU % (excludes idle AND iowait)
+        $server['cpu_iowait'] = $sat['cpu_iowait'];             // % time cores idle waiting on storage
+        $server['cpu_steal'] = $sat['cpu_steal'];               // raw hypervisor steal %
+        $server['cpu_steal_norm'] = $sat['cpu_steal_norm'];     // steal weighted by usage
+        $server['run_queue_norm'] = $sat['run_queue_norm'];     // runnable tasks per core
+        $server['cpu_capacity'] = $sat['cpu_capacity'];         // current aggregate MHz (cores x current MHz)
+        $server['cpu_capacity_max'] = $sat['cpu_capacity_max']; // maximum aggregate MHz (cores x max MHz)
+        $server['io_pressure'] = $sat['io_pressure'];           // storage saturation 0..1
+        $server['cpu_pressure'] = $sat['cpu_pressure'];         // CPU saturation 0..1
+        $server['mem_pressure'] = $sat['mem_pressure'];         // memory saturation 0..1
+        $server['total_pressure'] = $sat['total_pressure'];     // blended node score 0..1 (lower = freer)
 		$badDir = '/vz/root/';
 		$badDevs = array('proc', 'sysfs', 'devtmpfs', 'devpts', 'tmpfs', 'beancounter', 'fairsched', 'mqueue', 'cgroup', 'none');
 		$badLen = strlen($badDir);
