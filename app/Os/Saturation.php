@@ -189,7 +189,11 @@ class Saturation {
 		// =====================================================================
 		list($memTotal, $memAvailable) = self::sampleMemInfo();
 
-		// ZFS ARC (zeros on non-ZFS hosts).
+		// ZFS ARC (zeros on non-ZFS hosts). The ARC is kernel memory that
+		// /proc/meminfo does NOT fold into MemAvailable, yet everything above
+		// c_min is reclaimed on demand when applications need pages. Without
+		// this correction a ZFS host running a large warm ARC looks nearly out
+		// of memory to the scheduler when it is actually mostly free.
 		$arc = self::sampleZfsArc();
 
 		// =====================================================================
