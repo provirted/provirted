@@ -28,6 +28,7 @@ namespace App\Os;
  *     /proc/meminfo     - MemTotal / MemAvailable
  *     /proc/cpuinfo     - core count and current MHz
  *     /sys/.../cpufreq  - per-core current / maximum MHz
+ *     /proc/spl/kstat/zfs/arcstats - ZFS ARC size/limits (ZFS hosts only)
  *
  * Reading the kernel files directly is also a large speed win: the original
  * script spawned `mpstat 1 1` (1s) plus `iostat -x 1 2` (2s) plus `nproc` plus
@@ -102,6 +103,7 @@ class Saturation {
 	 *     cpu_steal:float, cpu_steal_norm:float,
 	 *     run_queue:int, run_queue_norm:float,
 	 *     mem_total:int, mem_available:int,
+	 *     zfs_arc_size:int, zfs_arc_min:int, zfs_arc_max:int, zfs_arc_reclaimable:int,
 	 *     io_pressure:float, cpu_pressure:float, mem_pressure:float, total_pressure:float
 	 * }
 	 */
@@ -187,12 +189,17 @@ class Saturation {
 		// =====================================================================
 		list($memTotal, $memAvailable) = self::sampleMemInfo();
 
+		// ZFS ARC (zeros on non-ZFS hosts).
+		$arc = self::sampleZfsArc();
+
 		// =====================================================================
 		// PRESSURE MODELS
 		// =====================================================================
 		$ioPressure = self::computeIoPressure($disk1, $disk2, $elapsed);
 		$cpuPressure = self::computeCpuPressure($cpuUsage, $runQueueNorm, $cpuStealNorm);
-		$memPressure = self::computeMemPressure($memAvailable, $memTotal);
+		// Count the reclaimable slice of the ARC as available so mem_pressure
+		// reflects real headroom on ZFS hosts (no-op elsewhere: reclaimable=0).
+		$memPressure = self::computeMemPressure($memAvailable + $arc['reclaimable'], $memTotal);
 		$totalPressure = self::computeTotalPressure($ioPressure, $cpuPressure, $memPressure);
 
 		return [
@@ -210,6 +217,10 @@ class Saturation {
 			'run_queue_norm'   => $runQueueNorm,
 			'mem_total'        => $memTotal,
 			'mem_available'    => $memAvailable,
+			'zfs_arc_size'        => $arc['size'],
+			'zfs_arc_min'         => $arc['min'],
+			'zfs_arc_max'         => $arc['max'],
+			'zfs_arc_reclaimable' => $arc['reclaimable'],
 			'io_pressure'      => $ioPressure,
 			'cpu_pressure'     => $cpuPressure,
 			'mem_pressure'     => $memPressure,
@@ -447,6 +458,48 @@ class Saturation {
 			}
 		}
 		return [$total, $avail];
+	}
+
+	/**
+	 * Read ZFS ARC memory stats from /proc/spl/kstat/zfs/arcstats (all in kB,
+	 * matching the /proc/meminfo units used everywhere else in the payload).
+	 *
+	 * The ARC (Adaptive Replacement Cache) is ZFS's read cache. On Linux it
+	 * lives in kernel (SPL slab) memory, so /proc/meminfo counts it as *used*
+	 * and MemAvailable does not credit it back - unlike the regular page cache.
+	 * In reality the kernel shrinks the ARC down to its c_min floor under
+	 * memory pressure, so everything above c_min is effectively reclaimable.
+	 *
+	 * Fields read (kstat layout is "name  type  data", stable since ZoL 0.6):
+	 *   size  - current ARC size in bytes
+	 *   c_min - floor the ARC will not shrink below (zfs_arc_min)
+	 *   c_max - configured ceiling (zfs_arc_max)
+	 *
+	 * Fails soft: on non-ZFS hosts (or ZFS-on-FreeBSD-style sysctl-only setups)
+	 * the kstat file is absent and every value reads 0, which downstream maths
+	 * treat as "no correction".
+	 *
+	 * @return array{size:int,min:int,max:int,reclaimable:int} kB values, zeros when no ZFS ARC
+	 */
+	public static function sampleZfsArc() {
+		$zero = ['size' => 0, 'min' => 0, 'max' => 0, 'reclaimable' => 0];
+		$stats = self::readFile('/proc/spl/kstat/zfs/arcstats');
+		if ($stats === '') {
+			return $zero;
+		}
+		$get = function ($key) use ($stats) {
+			// e.g. "size                            4    68719476736"
+			return preg_match('/^'.$key.'\s+\d+\s+(\d+)\s*$/m', $stats, $m) ? (int)((float)$m[1] / 1024) : 0;
+		};
+		$size = $get('size');
+		$min = $get('c_min');
+		$max = $get('c_max');
+		return [
+			'size'        => $size,
+			'min'         => $min,
+			'max'         => $max,
+			'reclaimable' => max(0, $size - $min),
+		];
 	}
 
 	// =========================================================================

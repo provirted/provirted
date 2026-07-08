@@ -86,8 +86,16 @@ class HostInfoCommand extends Command {
         $server['cpu_capacity_max'] = $sat['cpu_capacity_max']; // maximum aggregate MHz (cores x max MHz)
         $server['io_pressure'] = $sat['io_pressure'];           // storage saturation 0..1
         $server['cpu_pressure'] = $sat['cpu_pressure'];         // CPU saturation 0..1
-        $server['mem_pressure'] = $sat['mem_pressure'];         // memory saturation 0..1
+        $server['mem_pressure'] = $sat['mem_pressure'];         // memory saturation 0..1 (ARC-corrected on zfs)
         $server['total_pressure'] = $sat['total_pressure'];     // blended node score 0..1 (lower = freer)
+        // ZFS ARC memory (kB, zeros on non-zfs hosts). The ARC is kernel memory
+        // that MemAvailable does NOT credit back, so ramfree/mem_free under-report
+        // free RAM on zfs hosts; everything above zfs_arc_min is reclaimed on
+        // demand. Real headroom = mem_free + zfs_arc_reclaimable.
+        $server['zfs_arc_size'] = $sat['zfs_arc_size'];               // current ARC size
+        $server['zfs_arc_min'] = $sat['zfs_arc_min'];                 // c_min floor the ARC keeps
+        $server['zfs_arc_max'] = $sat['zfs_arc_max'];                 // c_max configured ceiling
+        $server['zfs_arc_reclaimable'] = $sat['zfs_arc_reclaimable']; // max(0, size - c_min)
 		$badDir = '/vz/root/';
 		$badDevs = array('proc', 'sysfs', 'devtmpfs', 'devpts', 'tmpfs', 'beancounter', 'fairsched', 'mqueue', 'cgroup', 'none');
 		$badLen = strlen($badDir);
