@@ -722,6 +722,18 @@ class Vps
 	}
 
 	/**
+	 * Writes IPv6 addressing into the guest for the non-cloud-init install path,
+	 * where there is no seed to carry a network-config. KVM-only: the other
+	 * backends configure guest networking through their own container tooling.
+	 * @return bool indicates success
+	 */
+	public static function installGuestIpv6Config($vzid, $ip, $ipv6Ip, $ipv6Range) {
+		if (self::getVirtType() != 'kvm')
+			return true; // not applicable; not an error
+		return Kvm::installGuestIpv6Config($vzid, $ip, $ipv6Ip, $ipv6Range);
+	}
+
+	/**
 	 * Cloud-init driven KVM install — currently KVM-only. Other backends would need
 	 * their own cloud-init-ish flow if/when added; for now fall through to false.
 	 */

@@ -286,6 +286,11 @@ HELP;
                         $cmd .= " --ssh-inject root:string:{$sshKeyArg}";
                     }
                     Vps::getLogger()->write(Vps::runCommand("{$cmd};"));
+                    // The cloud-init path carries IPv6 in its network-config seed;
+                    // this path has no seed, so it has to be written into the image.
+                    // Must come after installTemplate(), which lays down the OS and
+                    // would otherwise overwrite it.
+                    Vps::installGuestIpv6Config($vzid, $ip, $ipv6Ip, $ipv6Range);
                 }
             }
         }

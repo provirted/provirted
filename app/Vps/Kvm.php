@@ -433,6 +433,126 @@ class Kvm
 		return true;
 	}
 
+	/**
+	 * Writes IPv6 addressing INTO the guest filesystem, for the non-cloud-init
+	 * install path.
+	 *
+	 * Why this exists: the cloud-init path hands the guest a network-config via
+	 * the NoCloud seed (see buildNetworkConfig), but a plain template install has
+	 * no such channel. Until now that path only did Dhcpd6::setup(), which is the
+	 * HOST half -- it reserves the address and then waits for a request the guest
+	 * was never configured to make. The guest boots on whatever its image happens
+	 * to ship (for the ubuntu24 template that is a bare 'eth0: dhcp4: true'), gets
+	 * no IPv6 at all, and an IPv6-only VPS is simply dead.
+	 *
+	 * DHCPv6 cannot rescue it either: the guest only solicits when an RA sets the
+	 * Managed flag, and it needs a link-local before it can even open the socket.
+	 * So the address is written statically, exactly like the cloud-init path does.
+	 *
+	 * Must run AFTER installTemplate() -- that writes the OS onto the disk and
+	 * would clobber anything placed earlier. Guest must not be running.
+	 *
+	 * @param string $vzid    domain name (must be defined and stopped)
+	 * @param string $ip      IPv4 address or 'none'
+	 * @param string $ipv6Ip  the address to assign
+	 * @param string $ipv6Range CIDR (2604:a00:50:4:1::/80) or a bare prefix length
+	 * @return bool indicates success
+	 */
+	public static function installGuestIpv6Config($vzid, $ip, $ipv6Ip, $ipv6Range) {
+		if ($ipv6Ip === false || $ipv6Ip === '' || $ipv6Range === false || $ipv6Range === '')
+			return true; // nothing to do; not an error
+		$plen = trim((strpos($ipv6Range, '/') !== false)
+			? substr($ipv6Range, strrpos($ipv6Range, '/') + 1)
+			: $ipv6Range);
+		if ($plen === '' || !ctype_digit($plen)) {
+			Vps::getLogger()->error("Could not derive an IPv6 prefix length from '{$ipv6Range}'; skipping in-guest IPv6 config");
+			return false;
+		}
+		$gw = self::detectIpv6Gateway();
+		if ($gw === false) {
+			Vps::getLogger()->error('Could not detect an IPv6 gateway on the host bridge; skipping in-guest IPv6 config (the guest would have an address but no route)');
+			return false;
+		}
+		Vps::getLogger()->info("Writing IPv6 config into the guest ({$ipv6Ip}/{$plen} via {$gw})");
+		// dhcp4 is only forced off for an IPv6-only VPS. Leaving it on there makes
+		// the guest block in networkd-wait-online for the full DHCPv4 timeout on
+		// every boot, waiting for a lease the host will never hand out.
+		$dhcp4 = ($ip === 'none' || $ip === '' || $ip === null) ? 'false' : 'true';
+		// Resolvers must be reachable: an IPv6-only guest cannot talk to 8.8.8.8,
+		// and listing it only buys a DNS timeout before the v6 server is tried.
+		$ns = ($dhcp4 === 'false')
+			? '2606:4700:4700::1111, 2001:4860:4860::8888'
+			: '8.8.8.8, 1.1.1.1, 2606:4700:4700::1111, 2001:4860:4860::8888';
+		// on-link is REQUIRED: the guest carries the delegated prefix (a /80) while
+		// the gateway sits in the bridge's /64, so it is outside the guest's on-link
+		// prefix and networkd would otherwise reject the route outright.
+		$script = 'set -e'."\n"
+			// Some templates ship with IPv6 switched off, which is why the guest has
+			// no link-local for dhclient -6 to bind to. Undo that first.
+			.'mkdir -p /etc/sysctl.d'."\n"
+			.'{ echo "net.ipv6.conf.all.disable_ipv6 = 0"; echo "net.ipv6.conf.default.disable_ipv6 = 0"; } > /etc/sysctl.d/99-provirted-ipv6.conf'."\n"
+			.'if [ -d /etc/netplan ]; then'."\n"
+			// Reuse the ethernet key the image already defines. netplan merges blocks
+			// by id across files, so matching the existing id layers cleanly on top;
+			// inventing a new id that matches the same NIC produces two competing
+			// .network units instead.
+			.'  ID=""'."\n"
+			.'  for f in /etc/netplan/*.yaml /etc/netplan/*.yml; do'."\n"
+			.'    [ -f "$f" ] || continue'."\n"
+			// tail -n +2 drops the "ethernets:" line itself -- it is a bare key at a
+			// shallower indent and would otherwise match before the interface does.
+			.'    ID=$(sed -n "/ethernets:/,\$p" "$f" | tail -n +2 | sed -n "s/^[[:space:]]\{2,\}\([A-Za-z0-9_.-]\{1,\}\):[[:space:]]*\$/\1/p" | head -1)'."\n"
+			.'    [ -n "$ID" ] && break'."\n"
+			.'  done'."\n"
+			.'  [ -z "$ID" ] && ID=eth0'."\n"
+			.'  {'."\n"
+			.'    echo "network:"'."\n"
+			.'    echo "  version: 2"'."\n"
+			.'    echo "  ethernets:"'."\n"
+			.'    echo "    $ID:"'."\n"
+			.'      echo "      dhcp4: '.$dhcp4.'"'."\n"
+			.'      echo "      accept-ra: false"'."\n"
+			.'      echo "      addresses:"'."\n"
+			.'      echo "        - \"'.$ipv6Ip.'/'.$plen.'\""'."\n"
+			.'      echo "      routes:"'."\n"
+			.'      echo "        - to: \"::/0\""'."\n"
+			.'      echo "          via: \"'.$gw.'\""'."\n"
+			.'      echo "          on-link: true"'."\n"
+			.'      echo "      nameservers:"'."\n"
+			.'      echo "        addresses: ['.$ns.']"'."\n"
+			.'  } > /etc/netplan/99-provirted-ipv6.yaml'."\n"
+			// netplan refuses to apply world-readable configs (and warns loudly).
+			.'  chmod 600 /etc/netplan/99-provirted-ipv6.yaml'."\n"
+			.'elif [ -d /etc/sysconfig/network-scripts ]; then'."\n"
+			.'  IF=$(ls /etc/sysconfig/network-scripts/ifcfg-* 2>/dev/null | grep -v ifcfg-lo | head -1)'."\n"
+			.'  [ -z "$IF" ] && IF=/etc/sysconfig/network-scripts/ifcfg-eth0'."\n"
+			.'  sed -i "/^IPV6/d" "$IF" 2>/dev/null || true'."\n"
+			.'  {'."\n"
+			.'    echo "IPV6INIT=yes"'."\n"
+			.'    echo "IPV6_AUTOCONF=no"'."\n"
+			.'    echo "IPV6ADDR='.$ipv6Ip.'/'.$plen.'"'."\n"
+			.'    echo "IPV6_DEFAULTGW='.$gw.'"'."\n"
+			.'  } >> "$IF"'."\n"
+			.'elif [ -d /etc/network/interfaces.d ]; then'."\n"
+			.'  {'."\n"
+			.'    echo "iface eth0 inet6 static"'."\n"
+			.'    echo "    address '.$ipv6Ip.'"'."\n"
+			.'    echo "    netmask '.$plen.'"'."\n"
+			.'    echo "    gateway '.$gw.'"'."\n"
+			.'    echo "    accept_ra 0"'."\n"
+			.'  } > /etc/network/interfaces.d/99-provirted-ipv6'."\n"
+			.'else'."\n"
+			.'  echo "provirted: no recognised network config directory; IPv6 not written" >&2'."\n"
+			.'  exit 1'."\n"
+			.'fi'."\n";
+		Vps::getLogger()->write(Vps::runCommand('virt-customize --no-network -d '.escapeshellarg($vzid).' --run-command '.escapeshellarg($script), $return));
+		if ($return != 0) {
+			Vps::getLogger()->error("Could not write IPv6 config into {$vzid} (virt-customize exit {$return}); the VPS will boot without IPv6");
+			return false;
+		}
+		return true;
+	}
+
 	public static function runBuildEbtables() {
 		if (Vps::getPoolType() != 'zfs') {
 			$script = Vps::requireScript('run_buildebtables.sh');
