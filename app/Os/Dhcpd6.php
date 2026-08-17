@@ -38,13 +38,22 @@ class Dhcpd6
 			return [];
 		}
 		$hosts = [];
-		if (preg_match_all('/^\s*host\s+(?P<host>\S+)\s+{\s+hardware\s+ethernet\s+(?P<mac>\S+)\s*;\s*fixed-range6\s+(?P<ipv6_range>\S+)\s*;\s*fixed-address6\s+(?P<ipv6_ip>\S+)\s*;\s*}/msuU', $dhcpData, $matches)) {
-			foreach ($matches[0] as $idx => $match) {
-				$host = $matches['host'][$idx];
-				$mac = $matches['mac'][$idx];
-				$ipv6_ip = $matches['ipv6_ip'][$idx];
-				$ipv6_range = $matches['ipv6_range'][$idx];
-				$hosts[$host] = ['ipv6_ip' => $ipv6_ip, 'ipv6_range' => $ipv6_range, 'mac' => $mac];
+		// The statement keyword is 'fixed-prefix6' (what setup()/rebuildHosts() write),
+		// not 'fixed-range6', and the two writers emit address/prefix in opposite
+		// orders. Match the host block loosely and pull each statement out of it so
+		// either ordering parses. The old strict pattern never matched anything, so
+		// this always returned an empty array.
+		if (preg_match_all('/^[ \t]*host[ \t]+(?P<host>\S+)[ \t]*\{(?P<body>[^}]*)\}/m', $dhcpData, $matches, PREG_SET_ORDER)) {
+			foreach ($matches as $match) {
+				$body = $match['body'];
+				if (!preg_match('/hardware\s+ethernet\s+([^;\s]+)\s*;/i', $body, $m))
+					continue;
+				$mac = $m[1];
+				if (!preg_match('/fixed-address6\s+([^;\s]+)\s*;/i', $body, $m))
+					continue;
+				$ipv6_ip = $m[1];
+				$ipv6_range = preg_match('/fixed-(?:prefix|range)6\s+([^;\s]+)\s*;/i', $body, $m) ? $m[1] : '';
+				$hosts[$match['host']] = ['ipv6_ip' => $ipv6_ip, 'ipv6_range' => $ipv6_range, 'mac' => $mac];
 			}
 		}
 		return $hosts;
@@ -71,7 +80,11 @@ class Dhcpd6
 	* @return string
 	*/
 	public static function getService() {
-		return file_exists('/etc/apt') ? 'isc-dhcp-server' : 'dhcpd';
+		// NOTE: this is the DHCPv6 daemon, which is a SEPARATE unit from the v4 one.
+		// Debian/Ubuntu ship isc-dhcp-server (v4) and isc-dhcp-server6 (v6); RedHat
+		// ships dhcpd and dhcpd6. Returning the v4 name here (as this used to) meant
+		// every dhcpd6.vps change bounced the wrong daemon and never went live.
+		return file_exists('/etc/apt') ? 'isc-dhcp-server6' : 'dhcpd6';
 	}
 
 	/**
@@ -118,7 +131,13 @@ class Dhcpd6
 			Vps::getLogger()->write(Vps::runCommand("rm -f {$backupArg}"));
 			return false;
 		}
-		Vps::getLogger()->write(Vps::runCommand("echo \"host {$vzid} { hardware ethernet {$mac}; fixed-address6 {$ipv6Ip}; fixed-prefix6 {$ipv6Range}; }\" >> {$dhcpVpsArg}", $return));
+		// Only emit fixed-prefix6 when a range was actually supplied — writing an
+		// empty 'fixed-prefix6 ;' is a config syntax error that takes the whole
+		// dhcpd6 server down on next restart, not just this host entry.
+		$prefixStmt = '';
+		if ($ipv6Range !== false && trim((string)$ipv6Range) !== '' && strpos((string)$ipv6Range, '/') !== false)
+			$prefixStmt = ' fixed-prefix6 '.trim($ipv6Range).';';
+		Vps::getLogger()->write(Vps::runCommand("echo \"host {$vzid} { hardware ethernet {$mac};{$prefixStmt} fixed-address6 {$ipv6Ip}; }\" >> {$dhcpVpsArg}", $return));
 		if ($return != 0) {
 			Vps::getLogger()->error("Could not append host entry to {$dhcpVps} (exit {$return})");
 			return false;
@@ -153,19 +172,17 @@ include "'.self::getFile().'";
 
 shared-network myvpn {
 ';
-			foreach ($host['vlans6'] as $vlanId => $vlanData)
-				$parts = explode('/', $vlanData['vlans6_networks']);
-				$gateway = $parts[0].'1';
+			// NOTE: this foreach was previously written without braces, so only the
+			// explode() was in the loop body and the subnet6 block was emitted ONCE,
+			// for whichever vlan happened to be last. Hosts with more than one IPv6
+			// vlan silently lost every subnet but one.
+			foreach ($host['vlans6'] as $vlanId => $vlanData) {
 				$file .= 'subnet6 '.$vlanData['vlans6_networks'].' {
-
-		# 100 addresses available to clients (the third client should get NoAddrsAvail)
-		# range6 2604:a00:50:5::100 2604:a00:50:5::200;
-		# Use the whole /64 prefix for temporary addresses (i.e., direct application of RFC 4941)
-		# range 2604:a00:50:5:: temporary;
 		option dhcp6.name-servers 2606:4700:4700::1111;
 		option dhcp6.domain-search "interserver.net","is.cc", "trouble-free.net";
 }
 ';
+			}
 			$file .= '}';
 			if ($display === false) {
 				if (@file_put_contents(self::getConfFile(), $file) === false) {

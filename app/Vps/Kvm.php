@@ -684,6 +684,10 @@ class Kvm
 		}
 		self::removeStorage($vzid);
 		Dhcpd::remove($vzid);
+		// Destroy used to clean the v4 hosts file only, so /etc/dhcp/dhcpd6.vps
+		// accumulated entries for VPSes that no longer exist and kept handing their
+		// IPv6 out to whatever next claimed the MAC.
+		Dhcpd6::remove($vzid);
 		VpsIps::removeMainIp($vzid);
 	}
 
@@ -1148,10 +1152,41 @@ class Kvm
 	}
 
 	/**
+	 * Returns the host's IPv6 default gateway on the given bridge, preferring a
+	 * global address over a link-local one (a link-local gateway is valid but only
+	 * usable with an explicit scope, which netplan handles poorly). Returns false
+	 * when the host has no IPv6 default route.
+	 */
+	private static function detectIpv6Gateway($bridge = 'br0') {
+		$out = Vps::runCommand('ip -6 route show default 2>/dev/null');
+		if (!preg_match_all('/via\s+([0-9A-Fa-f:]+)\s+dev\s+(\S+)/', (string)$out, $m, PREG_SET_ORDER))
+			return false;
+		$linkLocal = false;
+		foreach ($m as $match) {
+			if ($match[2] !== $bridge)
+				continue;
+			if (stripos($match[1], 'fe80:') === 0) {
+				if ($linkLocal === false)
+					$linkLocal = $match[1];
+				continue;
+			}
+			return $match[1];
+		}
+		return $linkLocal;
+	}
+
+	/**
 	 * Builds a default cloud-init v2 network-config for a single NIC with a static IPv4 (and optional IPv6).
 	 * mac is matched so the cloud image binds the address to the right interface regardless of kernel name.
+	 *
+	 * IPv6-only guests ($ip === 'none') are a supported shape: dhcp4 is turned OFF
+	 * (leaving it on makes systemd-networkd-wait-online block for the full DHCPv4
+	 * timeout on every boot, which also stalls cloud-init's network stage) and the
+	 * resolvers are IPv6 so DNS actually works from the guest.
 	 */
 	private static function buildNetworkConfig($mac, $ip, array $extraIps, $ipv6Ip, $ipv6Range) {
+		$hasIpv4 = ($ip !== 'none' && $ip !== '' && $ip !== null);
+		$hasIpv6 = ($ipv6Ip !== false && $ipv6Ip !== '' && $ipv6Range !== false && $ipv6Range !== '');
 		$lines = [];
 		$lines[] = "version: 2";
 		$lines[] = "ethernets:";
@@ -1161,30 +1196,65 @@ class Kvm
 			$lines[] = "      macaddress: ".self::yamlScalar(strtolower($mac));
 			$lines[] = "    set-name: eth0";
 		}
-		$lines[] = "    dhcp4: true";
+		$lines[] = "    dhcp4: ".($hasIpv4 ? 'true' : 'false');
 		$addresses = [];
 		foreach ($extraIps as $extra) {
 			if ($extra !== '' && $extra !== $ip)
 				$addresses[] = $extra.'/32';
 		}
-		if ($ipv6Ip !== false && $ipv6Ip !== '' && $ipv6Range !== false && $ipv6Range !== '') {
+		$ipv6Prefix = '';
+		if ($hasIpv6) {
 			// --ipv6-range may arrive as a full CIDR (e.g. 2604:a00:50:11c:1::/80)
 			// or as a bare prefix length (e.g. 80). netplan wants <addr>/<prefixlen>,
 			// so take only the prefix length — otherwise we emit a malformed address
 			// like '2604:...::1/2604:...::/80' that breaks netplan apply on boot.
-			$prefix = (strpos($ipv6Range, '/') !== false)
+			$ipv6Prefix = trim((strpos($ipv6Range, '/') !== false)
 				? substr($ipv6Range, strrpos($ipv6Range, '/') + 1)
-				: $ipv6Range;
-			if (trim($prefix) !== '')
-				$addresses[] = $ipv6Ip.'/'.trim($prefix);
+				: $ipv6Range);
+			if ($ipv6Prefix !== '')
+				$addresses[] = $ipv6Ip.'/'.$ipv6Prefix;
+			else
+				$hasIpv6 = false;
 		}
 		if (count($addresses) > 0) {
 			$lines[] = "    addresses:";
 			foreach ($addresses as $addr)
 				$lines[] = "      - ".self::yamlScalar($addr);
 		}
+		if ($hasIpv6) {
+			$gw = self::detectIpv6Gateway();
+			if ($gw !== false) {
+				// accept-ra is deliberately OFF. The upstream switch advertises the
+				// bridge /64 with the Autonomous flag set, so a guest that honours RAs
+				// SLAACs itself an extra, unassigned, untracked address in our range —
+				// which breaks abuse attribution and lets a customer hop addresses.
+				// We hand out addressing ourselves, so the guest gets exactly what we
+				// assigned it and nothing else.
+				$lines[] = "    accept-ra: false";
+				// on-link is REQUIRED here: the guest carries the delegated prefix
+				// (e.g. a /80) rather than the bridge's /64, so the gateway is outside
+				// the guest's on-link prefix and netplan/networkd would otherwise
+				// refuse the route with "Nexthop has invalid gateway".
+				$lines[] = "    routes:";
+				$lines[] = "      - to: ".self::yamlScalar('::/0');
+				$lines[] = "        via: ".self::yamlScalar($gw);
+				$lines[] = "        on-link: true";
+			} else {
+				// Without a gateway of our own to hand over, RAs are the only source of
+				// a default route left, so fall back rather than ship an unreachable VPS.
+				$lines[] = "    accept-ra: true";
+				Vps::getLogger()->warn('Could not detect an IPv6 default gateway on br0; falling back to accept-ra so the guest still gets a default route. The guest will also SLAAC an extra untracked address.');
+			}
+		}
 		$lines[] = "    nameservers:";
-		$lines[] = "      addresses: [8.8.8.8, 1.1.1.1]";
+		// A v6-only guest cannot reach 8.8.8.8/1.1.1.1 at all, and listing them just
+		// buys a DNS timeout on every lookup before the v6 resolver is tried.
+		if ($hasIpv6 && !$hasIpv4)
+			$lines[] = "      addresses: [2606:4700:4700::1111, 2001:4860:4860::8888]";
+		elseif ($hasIpv6)
+			$lines[] = "      addresses: [8.8.8.8, 1.1.1.1, 2606:4700:4700::1111, 2001:4860:4860::8888]";
+		else
+			$lines[] = "      addresses: [8.8.8.8, 1.1.1.1]";
 		return implode("\n", $lines)."\n";
 	}
 

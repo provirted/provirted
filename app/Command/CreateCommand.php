@@ -187,8 +187,27 @@ HELP;
         $ioLimit = $useAll === false && array_key_exists('io-limit', $opts->keys) ? $opts->keys['io-limit']->value : false;
         $iopsLimit = $useAll === false && array_key_exists('iops-limit', $opts->keys) ? $opts->keys['iops-limit']->value : false;
         $clientEmail = array_key_exists('client-email', $opts->keys) ? $opts->keys['client-email']->value : '';
-        if (!empty($ip) && !$this->validIp($ip,true)) {
+        // 'none' is the sentinel for "no IPv4 on this VPS" and is understood by every
+        // layer below (Kvm/Docker/Lxc defineVps, Dhcpd::rebuildHosts, setupRouting).
+        // Normalize the empty string to it so there is a single spelling downstream.
+        if ($ip === '' || $ip === null)
+            $ip = 'none';
+        if ($ip !== 'none' && !$this->validIp($ip, true)) {
             Vps::getLogger()->error("Invalid IP Address '{$ip}'.");
+            return 1;
+        }
+        // An IPv4-less VPS is only reachable if it was given IPv6, otherwise we would
+        // silently build a guest with no addressing at all.
+        if ($ip === 'none' && ($ipv6Ip === false || $ipv6Ip === '')) {
+            Vps::getLogger()->error("IP Address 'none' requires --ipv6-ip (and --ipv6-range) to be set, otherwise the VPS would have no network addressing.");
+            return 1;
+        }
+        if ($ipv6Ip !== false && $ipv6Ip !== '' && filter_var($ipv6Ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+            Vps::getLogger()->error("Invalid IPv6 Address '{$ipv6Ip}'.");
+            return 1;
+        }
+        if ($ipv6Range !== false && $ipv6Range !== '' && !preg_match('#^[0-9A-Fa-f:]+/\d{1,3}$#', $ipv6Range) && !preg_match('#^\d{1,3}$#', $ipv6Range)) {
+            Vps::getLogger()->error("Invalid IPv6 Range '{$ipv6Range}'; expected a CIDR like 2604:a00:50:4:1::/80 or a bare prefix length like 80.");
             return 1;
         }
         if ($useAll == true && !in_array(Vps::getVirtType(), ['docker', 'lxc']) && trim(`virsh list --all|grep qs`) != '') {
