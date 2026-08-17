@@ -49,6 +49,59 @@ class Radvd
 	}
 
 	/**
+	* Makes sure radvd is actually installed, auto-installing it on apt hosts.
+	* Most hosts have never needed radvd, so a missing binary is the expected
+	* state on first rollout rather than a fault. Idempotent: a no-op once the
+	* binary is present.
+	*
+	* Call this AFTER the config has been written. Debian's postinst starts radvd
+	* only when a config exists, so installing second means the daemon comes up
+	* already holding the flags we want rather than briefly advertising nothing.
+	*
+	* @return bool true when radvd is present (or was successfully installed)
+	*/
+	public static function ensureInstalled() {
+		Vps::runCommand('command -v radvd >/dev/null 2>&1', $rc);
+		if ($rc == 0)
+			return true;
+		if (!file_exists('/etc/apt')) {
+			Vps::getLogger()->warn('radvd is not installed and this is not an apt-based host; install it manually (yum install -y radvd) or nothing will advertise '.self::getConfFile());
+			return false;
+		}
+		Vps::getLogger()->info('radvd is not installed; installing it so '.self::getConfFile().' takes effect');
+		Vps::runCommand('DEBIAN_FRONTEND=noninteractive apt-get install -y radvd 2>&1', $rc);
+		if ($rc != 0) {
+			Vps::getLogger()->warn("radvd install returned {$rc}; refreshing apt and retrying");
+			Vps::runCommand('apt-get update -qq 2>&1', $r2);
+			Vps::runCommand('DEBIAN_FRONTEND=noninteractive apt-get install -y radvd 2>&1', $rc);
+		}
+		Vps::runCommand('command -v radvd >/dev/null 2>&1', $rc);
+		if ($rc != 0) {
+			Vps::getLogger()->error('radvd could not be installed; '.self::getConfFile().' is written but nothing is advertising it. Install it manually: DEBIAN_FRONTEND=noninteractive apt-get install -y radvd');
+			return false;
+		}
+		Vps::getLogger()->info('radvd installed');
+		Vps::runCommand('systemctl enable radvd 2>/dev/null', $rc);
+		return true;
+	}
+
+	/**
+	* Warns when the upstream RA is still reaching the guest ports. radvd on its
+	* own does not stop SLAAC: br0 bridges the uplink to every vnetN, so the
+	* switch's A=1 advertisement still arrives and a guest honours every RA it
+	* receives rather than picking a winner. Without the filter in place the
+	* guests will keep inventing their own addresses no matter what we advertise.
+	*/
+	public static function warnIfRaFilterMissing() {
+		$out = Vps::runCommand('ebtables -L FORWARD 2>/dev/null', $rc);
+		if ($rc != 0)
+			return;
+		if (stripos((string)$out, 'router-advertisement') !== false || stripos((string)$out, '134') !== false)
+			return;
+		Vps::getLogger()->warn('The upstream RA is not being filtered off the guest ports, so guests will still see the switch advertising this prefix with Autonomous set and will keep SLAACing their own addresses. Run ra-filter.sh (in /root/cpaneldirect) to drop it.');
+	}
+
+	/**
 	* returns the name of the radvd service
 	* @return string
 	*/
@@ -157,15 +210,12 @@ class Radvd
 				Vps::getLogger()->error('Could not write '.self::getConfFile().' (check permissions)');
 				return false;
 			}
-			// Most hosts have never needed radvd, so a missing binary is expected
-			// rather than a fault. Say so plainly instead of letting restart() fail
-			// with an opaque systemctl error the operator has to go dig into.
-			Vps::getLogger()->write(Vps::runCommand('command -v radvd >/dev/null 2>&1', $return));
-			if ($return != 0) {
-				Vps::getLogger()->warn(self::getConfFile().' written, but radvd is not installed on this host so nothing is advertising it yet. Install it ('.(file_exists('/etc/apt') ? 'apt-get install -y radvd' : 'yum install -y radvd').') and enable it to take RA control away from the upstream switch.');
-				return true;
-			}
+			// Installed after the config is written, so Debian's postinst brings the
+			// daemon up already holding the flags we want.
+			if (!self::ensureInstalled())
+				return true; // config is on disk; the operator has been told what to install
 			self::restart();
+			self::warnIfRaFilterMissing();
 		} else {
 			Vps::getLogger()->write('cat > '.self::getConfFile().' <<EOF'.PHP_EOL.$file.'EOF'.PHP_EOL);
 		}
