@@ -157,6 +157,14 @@ class Radvd
 				Vps::getLogger()->error('Could not write '.self::getConfFile().' (check permissions)');
 				return false;
 			}
+			// Most hosts have never needed radvd, so a missing binary is expected
+			// rather than a fault. Say so plainly instead of letting restart() fail
+			// with an opaque systemctl error the operator has to go dig into.
+			Vps::getLogger()->write(Vps::runCommand('command -v radvd >/dev/null 2>&1', $return));
+			if ($return != 0) {
+				Vps::getLogger()->warn(self::getConfFile().' written, but radvd is not installed on this host so nothing is advertising it yet. Install it ('.(file_exists('/etc/apt') ? 'apt-get install -y radvd' : 'yum install -y radvd').') and enable it to take RA control away from the upstream switch.');
+				return true;
+			}
 			self::restart();
 		} else {
 			Vps::getLogger()->write('cat > '.self::getConfFile().' <<EOF'.PHP_EOL.$file.'EOF'.PHP_EOL);
