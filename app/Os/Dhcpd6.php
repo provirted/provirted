@@ -83,6 +83,67 @@ class Dhcpd6
 		if (!Dhcpd::ensureInstalled())
 			return false;
 		Vps::runCommand('systemctl enable '.escapeshellarg(self::getService()).' 2>/dev/null', $rc);
+		self::ensureUnitPairing();
+		return true;
+	}
+
+	/**
+	* Ties the v6 unit to the v4 one so they start and restart together.
+	*
+	* Debian ships isc-dhcp-server.service and isc-dhcp-server6.service as two
+	* completely independent units -- no Wants, no PartOf, no BindsTo between
+	* them. `systemctl restart isc-dhcp-server` therefore restarts ONLY the IPv4
+	* daemon and silently leaves the v6 one running the old config, which looks
+	* exactly like "my dhcpd6 changes didn't take effect" and is miserable to
+	* debug. (This is the same trap that had getService() returning the v4 name.)
+	*
+	* PartOf on the v6 side propagates stop/restart from v4 to v6; Wants on the
+	* v4 side makes starting v4 bring v6 up. Drop-ins are used rather than
+	* editing the shipped units so a package upgrade cannot clobber them.
+	*
+	* Safe on hosts with no IPv6: the stock v6 unit carries
+	* ConditionPathExists=|/etc/dhcp/dhcpd6.conf, so without a v6 config it just
+	* no-ops instead of starting a server.
+	*
+	* @return bool indicates success
+	*/
+	public static function ensureUnitPairing() {
+		if (!is_dir('/etc/systemd/system'))
+			return false; // not a systemd host; nothing to pair
+		$v4 = Dhcpd::getService();
+		$v6 = self::getService();
+		$dropins = [
+			'/etc/systemd/system/'.$v6.'.service.d/10-provirted-pair.conf' =>
+				"# Managed by provirted.\n"
+				."# Restarting the v4 unit must also restart this one, otherwise dhcpd6\n"
+				."# keeps serving the old config and the change looks like it was ignored.\n"
+				."[Unit]\n"
+				."PartOf={$v4}.service\n",
+			'/etc/systemd/system/'.$v4.'.service.d/10-provirted-pair.conf' =>
+				"# Managed by provirted.\n"
+				."# Starting the v4 unit should bring the v6 one up alongside it.\n"
+				."[Unit]\n"
+				."Wants={$v6}.service\n",
+		];
+		$changed = false;
+		foreach ($dropins as $path => $contents) {
+			if (file_exists($path) && @file_get_contents($path) === $contents)
+				continue;
+			$dir = dirname($path);
+			if (!is_dir($dir) && !@mkdir($dir, 0755, true)) {
+				Vps::getLogger()->error("Could not create {$dir}; leaving the dhcp units unpaired");
+				return false;
+			}
+			if (@file_put_contents($path, $contents) === false) {
+				Vps::getLogger()->error("Could not write {$path}; leaving the dhcp units unpaired");
+				return false;
+			}
+			$changed = true;
+		}
+		if ($changed) {
+			Vps::runCommand('systemctl daemon-reload 2>/dev/null', $rc);
+			Vps::getLogger()->info("Paired {$v6} to {$v4} so restarting either keeps both on the current config");
+		}
 		return true;
 	}
 
