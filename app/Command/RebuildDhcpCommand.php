@@ -4,6 +4,7 @@ namespace App\Command;
 use App\Vps;
 use App\Os\Dhcpd;
 use App\Os\Dhcpd6;
+use App\Os\Radvd;
 use CLIFramework\Command;
 use CLIFramework\Formatter;
 use CLIFramework\Logger\ActionLogger;
@@ -12,7 +13,7 @@ use CLIFramework\Debug\ConsoleDebug;
 
 class RebuildDhcpCommand extends Command {
 	public function brief() {
-		return "Regenerates the dhcpd config and host assignments files.\n\n	<what> can be 'conf', 'vps', or 'all' to regenerate the config file, host assignmetns file, or both (respectivly)";
+		return "Regenerates the dhcpd/dhcpd6/radvd config and host assignments files.\n\n	<what> can be 'conf', 'vps', or 'all' to regenerate the config files (dhcpd.conf, dhcpd6.conf and radvd.conf), host assignmetns file, or both (respectivly)";
 	}
 
 	/** @param \GetOptionKit\OptionCollection $opts */
@@ -46,6 +47,11 @@ class RebuildDhcpCommand extends Command {
 		if (in_array($what, ['conf', 'all'])) {
 			Dhcpd::rebuildConf($output);
 			Dhcpd6::rebuildConf($output);
+			// radvd is regenerated alongside dhcpd6 because the two are a matched
+			// pair: dhcpd6 only ever gets asked for an address if radvd's Managed
+			// flag told the guest to ask, and SLAAC only stays off if radvd keeps
+			// advertising AdvAutonomous off for the same prefixes dhcpd6 serves.
+			Radvd::rebuildConf($output);
 		}
 		if (in_array($what, ['vps', 'all'])) {
 			Dhcpd::rebuildHosts($output);
