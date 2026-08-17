@@ -68,6 +68,25 @@ class Dhcpd6
 	}
 
 	/**
+	* Makes sure the DHCPv6 server is installed and its unit is enabled.
+	*
+	* The v6 daemon comes from the SAME package as the v4 one (isc-dhcp-server
+	* ships both /usr/sbin/dhcpd and isc-dhcp-server6.service; there is no
+	* separate isc-dhcp-server6 package), so the install itself is delegated to
+	* Dhcpd::ensureInstalled(). All that is left here is enabling the second unit,
+	* which is NOT enabled by the package on its own -- a host can happily serve
+	* IPv4 forever with the v6 daemon installed but dead.
+	*
+	* @return bool true when the v6 daemon is available
+	*/
+	public static function ensureInstalled() {
+		if (!Dhcpd::ensureInstalled())
+			return false;
+		Vps::runCommand('systemctl enable '.escapeshellarg(self::getService()).' 2>/dev/null', $rc);
+		return true;
+	}
+
+	/**
 	* returns the name of the dhcpd hosts file
 	* @return string
 	*/
@@ -189,6 +208,10 @@ shared-network myvpn {
 					Vps::getLogger()->error('Could not write '.self::getConfFile().' (check permissions)');
 					return false;
 				}
+				// Installed after the config is written so the package's postinst
+				// brings the daemon up against a config that already exists. Also
+				// enables isc-dhcp-server6, which the package leaves off by default.
+				self::ensureInstalled();
 			} else {
 				Vps::getLogger()->write('cat > '.self::getConfFile().' <<EOF'.PHP_EOL.$file.PHP_EOL.'EOF'.PHP_EOL);
 			}

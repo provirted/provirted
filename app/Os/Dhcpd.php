@@ -24,6 +24,53 @@ class Dhcpd
 	}
 
 	/**
+	* returns the name of the package providing the DHCP server.
+	*
+	* NOTE: this ONE package ships both the v4 and the v6 daemon -- on Ubuntu
+	* isc-dhcp-server provides /usr/sbin/dhcpd along with both
+	* isc-dhcp-server.service and isc-dhcp-server6.service; there is no separate
+	* isc-dhcp-server6 package. Same story with dhcp-server on RedHat. So
+	* Dhcpd6::ensureInstalled() delegates here rather than installing anything of
+	* its own, and only has to enable the second unit.
+	*
+	* @return string
+	*/
+	public static function getPackage() {
+		return file_exists('/etc/apt') ? 'isc-dhcp-server' : 'dhcp-server';
+	}
+
+	/**
+	* Makes sure the DHCP server is actually installed, auto-installing it on apt
+	* hosts. Idempotent: a no-op once the dhcpd binary is present.
+	* @return bool true when dhcpd is present (or was successfully installed)
+	*/
+	public static function ensureInstalled() {
+		Vps::runCommand('command -v dhcpd >/dev/null 2>&1', $rc);
+		if ($rc == 0)
+			return true;
+		$package = self::getPackage();
+		if (!file_exists('/etc/apt')) {
+			Vps::getLogger()->warn("dhcpd is not installed and this is not an apt-based host; install it manually (yum install -y {$package}) or nothing will serve ".self::getConfFile());
+			return false;
+		}
+		Vps::getLogger()->info("dhcpd is not installed; installing {$package} so ".self::getConfFile().' takes effect');
+		Vps::runCommand('DEBIAN_FRONTEND=noninteractive apt-get install -y '.escapeshellarg($package).' 2>&1', $rc);
+		if ($rc != 0) {
+			Vps::getLogger()->warn("{$package} install returned {$rc}; refreshing apt and retrying");
+			Vps::runCommand('apt-get update -qq 2>&1', $r2);
+			Vps::runCommand('DEBIAN_FRONTEND=noninteractive apt-get install -y '.escapeshellarg($package).' 2>&1', $rc);
+		}
+		Vps::runCommand('command -v dhcpd >/dev/null 2>&1', $rc);
+		if ($rc != 0) {
+			Vps::getLogger()->error("{$package} could not be installed; ".self::getConfFile()." is written but nothing is serving it. Install it manually: DEBIAN_FRONTEND=noninteractive apt-get install -y {$package}");
+			return false;
+		}
+		Vps::getLogger()->info("{$package} installed");
+		Vps::runCommand('systemctl enable '.escapeshellarg(self::getService()).' 2>/dev/null', $rc);
+		return true;
+	}
+
+	/**
 	* gets an array of hosts and thier ip+mac assignments
 	* @return array
 	*/
@@ -171,6 +218,9 @@ shared-network myvpn {
 				Vps::getLogger()->error('Could not write '.self::getConfFile().' (check permissions)');
 				return false;
 			}
+			// Installed after the config is written so the package's postinst brings
+			// the daemon up against a config that already exists.
+			self::ensureInstalled();
 		} else {
 			Vps::getLogger()->write('cat > '.self::getConfFile().' <<EOF'.PHP_EOL.$file.PHP_EOL.'EOF'.PHP_EOL);
 		}
